@@ -1,0 +1,15 @@
+Step 1: run start_database.py
+Step 2: create Database object
+Step 3: access your needs by calling what service you need and their corresponding methods
+
+Example:
+from start_database import start_database
+from objects.staff_obj import Staff
+
+def testing():
+    db = start_database() <- this is the object that will let you access services per entity
+
+    if db:
+        result = db.service.staff.create_staff(Staff(dept_id=1, name="Kim", staff_type="Hourly"))
+        print(result)
+

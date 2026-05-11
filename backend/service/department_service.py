@@ -9,6 +9,7 @@ class DepartmentService:
         self.staff_repo = StaffRepo(conn)
         self.log_in = LogInRepo(conn)
 
+    # the needed attribute in creating new department is name (name of department) and manager_id (staff_id of staff to be manager)
     def create_department(self, dept):
         validation = self.__check_department(dept)
 
@@ -32,6 +33,7 @@ class DepartmentService:
         
         return validation
     
+    # the needed attribute in udpating department is dept_id, name (department name), manager_id (staff_if of the presumed manager)
     def delete_department(self, dept_id):
         try:
             dept_id = int(dept_id)

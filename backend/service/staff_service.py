@@ -33,7 +33,7 @@ class StaffService:
         
         return validation
 
-    # the needed attribute in udpating new staff is staff_id, dept_id, name, staff_type
+    # the needed attribute in udpating staff is staff_id, dept_id, name, staff_type
     # famous_level is REQUIRED if staff_type is hourly
     # monthly_salary is REQUIRED if staff_type is full_time
     def update_staff(self, staff, famous_level=None, monthly_salary=None):

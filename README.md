@@ -24,5 +24,10 @@ pip install -r requirements.txt
 python backend/database_connection.py
 ```
 
-# Database Connection
+### Database Connection
 Go to `backend/database_connection` to connect backend to PostgreSQL.
+
+### Backend
+1. `\repository` contains CRUD operations and joining of relations
+2. `\service` contains business logic
+3. `\objects` cntains objects to be used when passing data

@@ -1,3 +1,5 @@
-from database_connection import conn
+from all_service import Service
 
-print(conn)
+class Database:
+    def __init__(self, conn):
+        self.service = Service(conn)

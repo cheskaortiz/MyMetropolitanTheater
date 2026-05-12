@@ -208,8 +208,7 @@ def open_transaction_history(customer):
 # ── Main window ───────────────────────────────────────────────────────────────
 root = tk.Tk()
 root.title("My Metropolitan Theater")
-root.geometry("1100x660")
-root.minsize(900, 560)
+root.geometry("1920x1080")
 root.configure(bg=BG_MAIN)
 
 # ── Top bar ───────────────────────────────────────────────────────────────────

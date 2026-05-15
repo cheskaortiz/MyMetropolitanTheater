@@ -1,5 +1,3 @@
-from objects.transaction import Transaction
-
 class TransactionRepo:
     def __init__(self, connect):
         self.connect = connect

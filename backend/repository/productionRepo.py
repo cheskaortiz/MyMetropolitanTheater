@@ -1,5 +1,3 @@
-from objects.production import Production
-
 class ProductionRepo:
     def __init__(self, connect):
         self.connect = connect

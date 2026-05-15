@@ -1,5 +1,3 @@
-from objects.ticket import Ticket
-
 class TicketRepo:
     def __init__ (self, connect):
         self.connect = connect

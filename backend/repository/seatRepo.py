@@ -1,5 +1,3 @@
-from objects.seat import Seat
-
 class SeatRepo:
     def __init__(self, connect):
         self.connect = connect

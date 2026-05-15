@@ -1,5 +1,3 @@
-from objects.performanceSeat import PerformanceSeat
-
 class PerformanceSeatRepo:
     def __init__ (self, connect):
         self.connect = connect

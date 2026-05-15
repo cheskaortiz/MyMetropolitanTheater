@@ -1,12 +1,13 @@
 from datetime import datetime, date
 from repository.work_log_repo import WorkLogRepo
 from repository.staff_repo import StaffRepo
+from repository.performanceRepo import PerformanceRepo
 
 class WorkLogService:
     def __init__(self, conn):
         self.work_log_repo = WorkLogRepo(conn)
         self.staff_repo = StaffRepo(conn)
-        # self.performance_repo = 
+        self.performance = PerformanceRepo(conn)
 
     # get work log of specific staff
     def get_work_logs(self, staff_id):
@@ -40,17 +41,17 @@ class WorkLogService:
         if staff[2] != "Hourly":
             return "Only hourly staffs are counted for work logs."
         
-        # if new_log.performance_id is None:
-        # return "Performance id does not exist."
+        if new_log.performance_id is None:
+            return "Performance id does not exist."
 
-        # performance_time =
-        # start_dt = datetime.combine(date.today(), performance_time[0])
-        # end_dt = datetime.combine(date.today(), performance_time[1])
+        performance_time = self.performance.locatePerformanceByPerformanceId(new_log.performance_id)
+        start_dt = datetime.combine(date.today(), performance_time[0])
+        end_dt = datetime.combine(date.today(), performance_time[1])
 
-        # new_log.hours_worked = int((end_dt - start_dt).total_seconds() / 3600)
+        new_log.hours_worked = int((end_dt - start_dt).total_seconds() / 3600)
 
-        # self.work_log_repo.create_work_log(new_log)
+        self.work_log_repo.create_work_log(new_log)
 
-        # return "Added new work log successfully."
+        return "Added new work log successfully."
         
         

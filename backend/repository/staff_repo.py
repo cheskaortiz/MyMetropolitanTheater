@@ -123,7 +123,7 @@ class StaffRepo:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT staff_id, name
+                SELECT staff_id, name, staff_type
                 FROM Staff
                 WHERE staff_id = %s
                 """,

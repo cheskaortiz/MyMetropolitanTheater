@@ -23,30 +23,3 @@ class LogInRepo:
             row = cur.fetchone()
             return row
     
-    def delete_log_in(self, staff_id):
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
-                DELETE FROM Log_In
-                WHERE staff_id = %s
-                """,
-                (staff_id,)
-            )
-        self.conn.commit()
-    
-    def locate_staff(self, staff_id):
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT staff_id
-                FROM Log_In
-                WHERE staff_id = %s
-                """,
-                (staff_id,)
-            )
-            row = cur.fetchone()
-
-            if row:
-                return row
-            return None
-    

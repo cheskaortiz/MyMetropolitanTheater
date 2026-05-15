@@ -1,5 +1,3 @@
-from objects.customer import Customer
-
 class CustomerRepo:
     def __init__(self, connect):
         self.connect = connect

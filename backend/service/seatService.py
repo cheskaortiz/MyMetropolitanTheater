@@ -5,9 +5,7 @@ class SeatService:
     def __init__(self, conn):
         self.seatRepo = SeatRepo(conn)
 
-    
-
-
+    # retrieves all seats
     def viewAllSeats(self):
         seats = self.seatRepo.getAllSeat()
 
@@ -15,16 +13,6 @@ class SeatService:
             return "No seats available."
 
         return self.__format_seat_list(seats)
-
-    # Optional alias for requirement: Theater Seat Map
-    def viewSeatMap(self):
-        seats = self.seatRepo.getAllSeat()
-
-        if seats is None:
-            return "No seats available."
-
-        return self.__format_seat_list(seats)
-
 
     def locateSeatId(self, seatId):
         if seatId is None or str(seatId).strip() == "":
@@ -68,7 +56,7 @@ class SeatService:
 
         return "Seat does not exist."
 
-
+    #  update seat
     def updateSeat(self, seat):
         validation = self.__checkSeat(seat, isUpdate=True)
 

@@ -85,6 +85,7 @@ class TicketService:
         tickets = self.ticketRepo.getAllTickets()
         return self.__format_basic_ticket_list(tickets)
 
+    # Needed attributes: performance seat id and customer id
     def viewTicketDetails(self, performanceSeatId, customerId):
         try:
             performanceSeatId = int(performanceSeatId)
@@ -94,7 +95,6 @@ class TicketService:
 
         details = self.ticketRepo.getTicketDetails(performanceSeatId, customerId)
         return self.__format_ticket_details_list(details)
-
 
     def locateTicketId(self, ticketId):
         try:

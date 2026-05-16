@@ -10,6 +10,7 @@ class TransactionService:
         self.ticketRepo = TicketRepo(conn)
         self.staff_repo = StaffRepo(conn)
 
+    # Needed attributes: transaction object with ticketId, staffId, transactionDate, type, and amount.
     def createTransaction(self, transaction):
         validation = self.__checkTransaction(transaction)
 
@@ -19,6 +20,7 @@ class TransactionService:
 
         return validation
 
+    # Needed attributes: none; displays all transactions using basic transaction details.
     def viewAllTransactions(self):
         transactions = self.transactionRepo.getAllTransactions()
 
@@ -32,6 +34,7 @@ class TransactionService:
 
         return transaction_list
 
+    # Needed attributes: none; displays full transaction report with ticket, staff, customer, production, performance, and seat details.
     def viewTransactionReport(self):
         transactions = self.transactionRepo.getTransactionReport()
 
@@ -71,6 +74,7 @@ class TransactionService:
 
         return commissions
 
+    # Needed attribute: transactionId.
     def locateTransactionId(self, transactionId):
         try:
             transactionId = int(transactionId)
@@ -83,7 +87,8 @@ class TransactionService:
             return self.__formatBasicTransaction(transaction)
 
         return "Transaction does not exist."
-
+    
+    # Needed attribute: staffid
     def locateTransactionsByStaff(self, staffId):
         try:
             staffId = int(staffId)
@@ -107,6 +112,7 @@ class TransactionService:
 
         return transaction_list
 
+    # Needed attribute: ticketid
     def locateTransactionsByTicket(self, ticketId):
         try:
             ticketId = int(ticketId)
@@ -129,7 +135,8 @@ class TransactionService:
             transaction_list.append(self.__formatTransactionReport(transaction))
 
         return transaction_list
-    
+
+    # Needed attribute: type; must be purchased, reserved, or refunded. 
     def locateTransactionsByType(self, type):
         if type is None or str(type).strip() == "":
             return "Transaction type is required."
@@ -151,7 +158,7 @@ class TransactionService:
 
         return transaction_list
 
-    
+    # Needed attribute: transactionDate in YYYY-MM-DD format.
     def locateTransactionsByDate(self, transactionDate):
         if transactionDate is None or str(transactionDate).strip() == "":
             return "Transaction date is required."
@@ -173,6 +180,7 @@ class TransactionService:
 
         return transaction_list
 
+# Needed attributes: startDate and endDate in YYYY-MM-DD format.
     def locateTransactionsByDateRange(self, startDate, endDate):
         if startDate is None or endDate is None:
             return "Start date and end date are required."

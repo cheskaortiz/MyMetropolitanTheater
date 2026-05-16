@@ -10,9 +10,6 @@ class TransactionService:
         self.ticketRepo = TicketRepo(conn)
         self.staff_repo = StaffRepo(conn)
 
-    # creates a transaction after full validation
-    # requirement: only commissioned staff/sales agents can process transactions
-    # requirement: ticket must exist before a transaction can be created
     def createTransaction(self, transaction):
         validation = self.__checkTransaction(transaction)
 
@@ -22,29 +19,58 @@ class TransactionService:
 
         return validation
 
-    # retrieves all transactions for reporting
-    # requirement: Transaction Report
     def viewAllTransactions(self):
-        return self.transactionRepo.getAllTransactions()
+        transactions = self.transactionRepo.getAllTransactions()
 
-    # retrieves full transaction report with all joined details
-    # requirement: Transaction Report — customer, production, performance, seat, price, staff
+        if not transactions:
+            return "No transaction available."
+
+        transaction_list = []
+
+        for transaction in transactions:
+            transaction_list.append(self.__formatBasicTransaction(transaction))
+
+        return transaction_list
+
     def viewTransactionReport(self):
-        return self.transactionRepo.getTransactionReport()
+        transactions = self.transactionRepo.getTransactionReport()
 
-    # retrieves highest earners in the sales department
-    # requirement: List of highest earners in the Sales Department
+        if not transactions:
+            return "No transaction report available."
+
+        transaction_reports = []
+
+        for transaction in transactions:
+            transaction_reports.append(self.__formatTransactionReport(transaction))
+
+        return transaction_reports
+
     def viewHighestEarners(self):
-        return self.transactionRepo.getEarningsByStaff()
+        staffs = self.transactionRepo.getEarningsByStaff()
 
-    # calculates and retrieves commission earned per sales agent
-    # requirement: sales agents paid 25% of total tickets sold
-    # requirement: List of highest earners in the Sales Department
+        if not staffs:
+            return "No sales earnings available."
+
+        highest_earners = []
+
+        for staff in staffs:
+            highest_earners.append(self.__formatHighestEarner(staff))
+
+        return highest_earners
+
     def viewCommissionByStaff(self):
-        return self.transactionRepo.getCommissionByStaff()
+        staffs = self.transactionRepo.getCommissionByStaff()
 
-    # locates a transaction by ID
-    # used before any lookup/update
+        if not staffs:
+            return "No commission records available."
+
+        commissions = []
+
+        for staff in staffs:
+            commissions.append(self.__formatCommission(staff))
+
+        return commissions
+
     def locateTransactionId(self, transactionId):
         try:
             transactionId = int(transactionId)
@@ -54,12 +80,10 @@ class TransactionService:
         transaction = self.transactionRepo.locateTransactionId(transactionId)
 
         if transaction:
-            return transaction
+            return self.__formatBasicTransaction(transaction)
 
         return "Transaction does not exist."
 
-    # locates all transactions processed by a specific sales agent
-    # requirement: Names, salaries, and departments of specific workers
     def locateTransactionsByStaff(self, staffId):
         try:
             staffId = int(staffId)
@@ -71,10 +95,18 @@ class TransactionService:
         if not staff:
             return "Staff does not exist."
 
-        return self.transactionRepo.locateTransactionsbyStaff(staffId)
+        transactions = self.transactionRepo.locateTransactionsbyStaff(staffId)
 
-    # locates all transactions linked to a specific ticket
-    # requirement: Transaction Report — full ticket transaction history
+        if not transactions:
+            return "No transactions found for this staff."
+
+        transaction_list = []
+
+        for transaction in transactions:
+            transaction_list.append(self.__formatTransactionReport(transaction))
+
+        return transaction_list
+
     def locateTransactionsByTicket(self, ticketId):
         try:
             ticketId = int(ticketId)
@@ -86,10 +118,18 @@ class TransactionService:
         if not ticket:
             return "Ticket does not exist."
 
-        return self.transactionRepo.locateTransactionsbyTicketId(ticketId)
+        transactions = self.transactionRepo.locateTransactionsbyTicketId(ticketId)
 
-    # locates transactions by type: purchased, reserved, refunded
-    # requirement: Transaction Report — filter by type
+        if not transactions:
+            return "No transactions found for this ticket."
+
+        transaction_list = []
+
+        for transaction in transactions:
+            transaction_list.append(self.__formatTransactionReport(transaction))
+
+        return transaction_list
+    
     def locateTransactionsByType(self, type):
         if type is None or str(type).strip() == "":
             return "Transaction type is required."
@@ -99,10 +139,19 @@ class TransactionService:
         if type not in ["purchased", "reserved", "refunded"]:
             return "Transaction type must be purchased, reserved, or refunded."
 
-        return self.transactionRepo.locateTransactionsbyType(type)
+        transactions = self.transactionRepo.locateTransactionsbyType(type)
 
-    # locates transactions by date
-    # requirement: Transaction Report — filter by date
+        if not transactions:
+            return "No transactions found for this type."
+
+        transaction_list = []
+
+        for transaction in transactions:
+            transaction_list.append(self.__formatTransactionReport(transaction))
+
+        return transaction_list
+
+    
     def locateTransactionsByDate(self, transactionDate):
         if transactionDate is None or str(transactionDate).strip() == "":
             return "Transaction date is required."
@@ -112,10 +161,18 @@ class TransactionService:
         except ValueError:
             return "Invalid date format. Use YYYY-MM-DD."
 
-        return self.transactionRepo.locateTransactionsbyDate(transactionDate)
+        transactions = self.transactionRepo.locateTransactionsbyDate(transactionDate)
 
-    # locates transactions within a date range
-    # requirement: Transaction Report — filter by date range
+        if not transactions:
+            return "No transactions found for this date."
+
+        transaction_list = []
+
+        for transaction in transactions:
+            transaction_list.append(self.__formatTransactionReport(transaction))
+
+        return transaction_list
+
     def locateTransactionsByDateRange(self, startDate, endDate):
         if startDate is None or endDate is None:
             return "Start date and end date are required."
@@ -129,72 +186,155 @@ class TransactionService:
         if start > end:
             return "Start date cannot be later than end date."
 
-        return self.transactionRepo.locateTransactionsByDateRange(startDate, endDate)
+        transactions = self.transactionRepo.locateTransactionsByDateRange(startDate, endDate)
 
-    # validates transaction fields before creating
-    # checks: ticketId exists, staffId exists and is Commissioned type,
-    # type is purchased/reserved/refunded, amount is valid number
-    # requirement: only sales agents can make transactions
+        if not transactions:
+            return "No transactions found within this date range."
+
+        transaction_reports = []
+
+        for transaction in transactions:
+            transaction_reports.append(self.__formatTransactionReport(transaction))
+
+        return transaction_reports
+
     def __checkTransaction(self, transaction):
-        if not transaction.ticketId:
+        if transaction is None:
+            return "Transaction data is required."
+
+        # Validate ticket ID
+        if transaction.ticketId is None:
             return "Ticket ID is required."
-
-        if not transaction.staffId:
-            return "Staff ID is required."
-
-        if not transaction.transactionDate:
-            return "Transaction date is required."
-
-        if not transaction.type:
-            return "Transaction type is required."
-
-        if transaction.amount is None or str(transaction.amount).strip() == "":
-            return "Amount is required."
 
         try:
             transaction.ticketId = int(transaction.ticketId)
         except ValueError:
-            return "Ticket ID must be a number."
-
-        try:
-            transaction.staffId = int(transaction.staffId)
-        except ValueError:
-            return "Staff ID must be a number."
-
-        try:
-            transaction.amount = float(transaction.amount)
-        except ValueError:
-            return "Amount must be a number."
-
-        try:
-            datetime.strptime(str(transaction.transactionDate), "%Y-%m-%d")
-        except ValueError:
-            return "Invalid transaction date format. Use YYYY-MM-DD."
-
-        transaction.type = transaction.type.lower().strip()
-
-        if transaction.type not in ["purchased", "reserved", "refunded"]:
-            return "Transaction type must be purchased, reserved, or refunded."
+            return "Invalid ticket ID. Must be a number."
 
         ticket = self.ticketRepo.locateTicketId(transaction.ticketId)
 
         if not ticket:
             return "Ticket does not exist."
 
+        # Validate staff ID
+        if transaction.staffId is None:
+            return "Staff ID is required."
+
+        try:
+            transaction.staffId = int(transaction.staffId)
+        except ValueError:
+            return "Invalid staff ID. Must be a number."
+
         staff = self.staff_repo.locate_staff(transaction.staffId)
 
         if not staff:
             return "Staff does not exist."
 
-        staffType = staff[1]
-
-        if staffType != "Commissioned":
+        # Hourly staff should not process transactions.
+        if str(staff[2]).lower() != "commissioned":
             return "Only commissioned staff or sales agents can process transactions."
 
-        if transaction.type in ["purchased", "reserved"] and transaction.amount <= 0:
-            return "Purchased or reserved transaction amount must be greater than 0."
+        # Validate transaction date
+        if transaction.transactionDate is None or str(transaction.transactionDate).strip() == "":
+            return "Transaction date is required."
 
-        if transaction.type == "refunded" and transaction.amount >= 0:
-            return "Refunded transaction amount should be negative."
+        try:
+            datetime.strptime(str(transaction.transactionDate), "%Y-%m-%d")
+        except ValueError:
+            return "Invalid transaction date. Use YYYY-MM-DD."
+
+        # Validate transaction type
+        if transaction.type is None or str(transaction.type).strip() == "":
+            return "Transaction type is required."
+
+        transaction.type = str(transaction.type).lower().strip()
+
+        if transaction.type not in ["purchased", "reserved", "refunded"]:
+            return "Transaction type must be purchased, reserved, or refunded."
+
+        # Validate amount
+        if transaction.amount is None:
+            return "Amount is required."
+
+        try:
+            transaction.amount = float(transaction.amount)
+        except ValueError:
+            return "Invalid amount. Must be a number."
+
+        if transaction.amount <= 0:
+            return "Amount must be greater than zero."
 
         return True
+    
+# ----------------------------Formats
+    
+    def __format_date(self, value):
+        if value is None:
+            return None
+        
+        if hasattr(value, "strftime"):
+            return value.strftime("%m/%d/%Y")
+        
+        return str(value)
+
+    def __format_time(self, value):
+        if value is None:
+            return None
+        
+        if hasattr(value, "strftime"):
+            return value.strftime("%I:%M %p").lstrip("0")
+        
+        return str(value)
+
+    def __format_amount(self, value):
+        if value is None:
+            return "Php 0.00"
+        
+        return f"Php {float(value):,.2f}"
+
+    # Used for SELECT * FROM transactions
+    def __formatBasicTransaction(self, transaction):
+        return {
+            "transaction_id": transaction[0],
+            "ticket_id": transaction[1],
+            "staff_id": transaction[2],
+            "transaction_date": self.__format_date(transaction[3]),
+            "type": str(transaction[4]).title(),
+            "amount": self.__format_amount(transaction[5])
+        }
+
+    # Used for getTransactionReport() and locateTransactionsByDateRange()
+    def __formatTransactionReport(self, transaction):
+        return {
+            "transaction_id": transaction[0],
+            "transaction_date": self.__format_date(transaction[1]),
+            "type": str(transaction[2]).title(),
+            "amount": self.__format_amount(transaction[3]),
+            "staff_name": transaction[4],
+            "customer_name": transaction[5],
+            "ticket_number": transaction[6],
+            "ticket_status": transaction[7],
+            "production_title": transaction[8],
+            "performance_date": self.__format_date(transaction[9]),
+            "start_time": self.__format_time(transaction[10]),
+            "end_time": self.__format_time(transaction[11]),
+            "seat_number": transaction[12],
+            "seat_view": transaction[13],
+            "price": self.__format_amount(transaction[14])
+        }
+
+    def __formatHighestEarner(self, staff):
+        return {
+            "staff_id": staff[0],
+            "staff_name": staff[1],
+            "total_sales": self.__format_amount(staff[2])
+        }
+
+    def __formatCommission(self, staff):
+        return {
+            "staff_id": staff[0],
+            "staff_name": staff[1],
+            "total_sales": self.__format_amount(staff[2]),
+            "commission": self.__format_amount(staff[3])
+        }
+    

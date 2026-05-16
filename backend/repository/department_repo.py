@@ -34,11 +34,23 @@ class DepartmentRepo:
             )
             self.conn.commit()
 
-    def get_all_department(self):
+    def get_department(self, dept_name):
         with self.conn.cursor() as cur:
-            cur.execute("SELECT * FROM Department")
-            rows = cur.fetchall()
-            return rows
+            cur.execute(
+                """
+                SELECT 
+                    d.name,
+                    s.staff_id,
+                    s.name AS staff_name
+                    s.type AS type
+                FROM Department d
+                LEFT JOIN Staff s 
+                    ON s.department_id = d.department_id
+                WHERE d.name = %s
+                """,
+                (dept_name,)
+            )
+            return cur.fetchall()
 
     def locate_department_name(self, dept_name):
         with self.conn.cursor() as cur:

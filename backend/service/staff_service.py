@@ -151,10 +151,11 @@ class StaffService:
         return False
 
     def __check_department_and_type(self, staff):
-        if (staff.staff_type == "Full Time" and staff.dept_id == 3) or (staff.staff_type == "Hourly" and staff.dept_id == 1) or (staff.staff_type == "Commissioned" and staff.dept_id == 2):
-            return True
-        return False
+        if staff.staff_type == "Commissioned" and staff.dept_id != 2:
+            return False
+        return True
 
+    # log_in credentials are automatic
     def __create_log_in(self, staff):
         if staff.staff_type == "Commissioned" and self.log_in.locate_staff(staff.staff_id) is None:
                 password = staff.name.replace(" ", ".") + "." + str(staff.staff_id) + "@mmt"

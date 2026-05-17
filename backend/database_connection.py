@@ -2,9 +2,9 @@ import psycopg2
 def get_connection():
     try:
         conn = psycopg2.connect(
-            database="MyMetropolitanTheater", #change to your created database
+            database="MyMetropolitanTheaterDatabase", #change to your created database
             user="postgres",
-            password="Sherlin21@@@", #change to your own password
+            password="AKOSICYAN69", #change to your own password
             host="127.0.0.1",
             port=5432,
         )

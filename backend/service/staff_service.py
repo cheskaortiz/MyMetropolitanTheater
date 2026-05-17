@@ -157,10 +157,16 @@ class StaffService:
 
     # log_in credentials are automatic
     def __create_log_in(self, staff):
+    # Sales (Commissioned) staff get login credentials
         if staff.staff_type == "Commissioned" and self.log_in.locate_staff(staff.staff_id) is None:
-                password = staff.name.replace(" ", ".") + "." + str(staff.staff_id) + "@mmt"
-                self.log_in.create_log_in(LogIn(staff_id=staff.staff_id, password=password))
-    
+            password = staff.name.replace(" ", ".") + "." + str(staff.staff_id) + "@mmt"
+            self.log_in.create_log_in(LogIn(staff_id=staff.staff_id, password=password))
+
+    # Managers also get login credentials
+        if self.dept_repo.locate_manager(staff.staff_id) is not None and self.log_in.locate_staff(staff.staff_id) is None:
+            password = staff.name.replace(" ", ".") + "." + str(staff.staff_id) + "@mmt"
+            self.log_in.create_log_in(LogIn(staff_id=staff.staff_id, password=password))
+
     def __create_staff_type(self, staff, famous_level=None, monthly_salary=None):
         if staff.staff_type == "Hourly":
             self.hourly_repo.create_hourly(Hourly(staff.staff_id, self.__match_famous_level(famous_level), famous_level))

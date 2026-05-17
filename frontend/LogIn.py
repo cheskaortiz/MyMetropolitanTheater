@@ -1,4 +1,5 @@
 import tkinter as tk
+import tkinter.messagebox
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 BG_LIGHT   = "#F0F0F0"
@@ -163,7 +164,35 @@ def open_signup_window(event=None):
 
 # ── Login logic ───────────────────────────────────────────────────────────────
 def handle_login():
-    print(f"Logging in with Username: {username_entry.get()}")
+    import sys
+    sys.path.append("backend")
+    from start_database import start_database
+    from objects.log_in_obj import LogIn
+
+    db = start_database()
+    if not db:
+        tk.messagebox.showerror("Error", "Cannot connect to database.")
+        return
+
+    staff_id = username_entry.get()
+    password = password_entry.get()
+
+    try:
+        staff_id = int(staff_id)
+    except ValueError:
+        tk.messagebox.showerror("Error", "Username must be your Staff ID number.")
+        return
+
+    result = db.service.log_in.log_in(LogIn(staff_id=staff_id, password=password))
+
+    if result == "Invalid log in credentials. User not found":
+        tk.messagebox.showerror("Error", result)
+    elif result == "Wrong password.":
+        tk.messagebox.showerror("Error", result)
+    elif isinstance(result, list):
+        role = result[1]
+        tk.messagebox.showinfo("Success", f"Welcome! Access level: {role}")
+        # TODO: open the correct window based on role
 
 # ── Main window ───────────────────────────────────────────────────────────────
 root = tk.Tk()

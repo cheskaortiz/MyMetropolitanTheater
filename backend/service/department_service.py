@@ -46,8 +46,27 @@ class DepartmentService:
             
         except ValueError:
             return "Invalid department_id. Must be a number."
-        
+    
+    # get department and its staff
+    def get_department(self, dept_name):
+        dept = self.dept_repo.get_department(dept_name)
 
+        if dept is None:
+            return "Department does not exist"
+        
+        staffs = []
+        for staff in dept:
+            if staff[1] is None:
+                return "No employee available."
+            
+            staffs.append({
+                "dept_name": staff[0],
+                "staff_id": staff[1],
+                "staff_name": staff[2],
+                "staff_type": staff[3]
+            })
+        return staffs
+         
     def __check_department(self, dept):
         try:
             dept.manager_id = int(dept.manager_id)

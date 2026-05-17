@@ -1,6 +1,7 @@
 from repository.performanceSeatRepo import PerformanceSeatRepo
 from repository.seatRepo import SeatRepo
 from repository.performanceRepo import PerformanceRepo
+from repository.ticketRepo import TicketRepo
 from decimal import Decimal, InvalidOperation
 
 
@@ -9,6 +10,7 @@ class PerformanceSeatService:
         self.performanceSeatRepo = PerformanceSeatRepo(conn)
         self.seatRepo = SeatRepo(conn)
         self.performanceRepo = PerformanceRepo(conn)
+        self.ticketRepo = TicketRepo(conn)
 
     # creates a performance seat after validating seat, performance, price, and availability
     # requirement: seats must be assigned to a performance before tickets can be sold
@@ -46,6 +48,26 @@ class PerformanceSeatService:
     # retrieves all performance seat records
     def viewAllPerformanceSeats(self):
         return self.performanceSeatRepo.getAllPerformanceSeats()
+    
+    def deletePerformanceSeat(self, performanceSeatId):
+        try:
+            performanceSeatId = int(performanceSeatId)
+        except (ValueError, TypeError):
+            return "Invalid performance seat ID."
+
+        performanceSeat = self.performanceSeatRepo.locatePerformanceSeatId(performanceSeatId)
+
+        if not performanceSeat:
+            return "Performance seat does not exist."
+
+        existingTicket = self.ticketRepo.locateTicketByPerformanceSeatId(performanceSeatId)
+
+        if existingTicket:
+            return "Cannot delete performance seat because it already has an existing ticket."
+
+        self.performanceSeatRepo.deletePerformanceSeat(performanceSeatId)
+
+        return "Successfully deleted performance seat."
 
     # retrieves all seats for a performance including unavailable ones — full seat map
     # requirement: Theater Seat Map

@@ -8,7 +8,7 @@ class PerformanceService:
         self.performanceRepo = PerformanceRepo(conn)
         self.productionRepo = ProductionRepo(conn)
 
-    # creates a new performance schedule for a production
+    # Needed attributes: productionId, startTime, endTime, date, totalSeats
     def createPerformance(self, performance):
         validation = self.__checkPerformance(performance)
 
@@ -18,7 +18,6 @@ class PerformanceService:
 
         return validation
 
-    # updates an existing performance schedule
     def updatePerformance(self, performance):
         if performance.performanceId is None:
             return "Invalid performanceId."
@@ -39,7 +38,7 @@ class PerformanceService:
 
         return validation
 
-    # deletes a performance if there are no tickets connected to it
+
     def deletePerformance(self, performanceId):
         try:
             performanceId = int(performanceId)
@@ -55,9 +54,19 @@ class PerformanceService:
         self.performanceRepo.deletePerformance(performanceId)
         return "Performance deleted."
 
-    # retrieves all performances
+
     def viewAllPerformances(self):
-        return self.performanceRepo.getAllPerformance()
+        performances = self.performanceRepo.getAllPerformance()
+
+        if not performances:
+            return "No performances available."
+
+        performance_list = []
+
+        for performance in performances:
+            performance_list.append(self.__performance_dictionary(performance))
+
+        return performance_list
     
     def locatePerformanceId(self, performanceId):
         try:
@@ -68,12 +77,12 @@ class PerformanceService:
         performance = self.performanceRepo.locatePerformanceId(performanceId)
 
         if performance:
-            return performance
+            return self.__performance_dictionary(performance)
 
         return "Performance does not exist."
 
-    # locates start time and entime of performance using performance_id
-    def locatePerformancebyPerformanceId(self, performanceId):
+    # used in workdlogs, This returns only start_time and end_time because the repo query only selects those two columns.
+    def locatePerformanceByPerformanceId(self, performanceId):
         try:
             performanceId = int(performanceId)
         except ValueError:
@@ -82,11 +91,11 @@ class PerformanceService:
         performance = self.performanceRepo.locatePerformanceByPerformanceId(performanceId)
 
         if performance:
-            return performance
+            return self.__performance_time_dictionary(performance)
 
         return "Performance does not exist."
 
-    # locates all performances under one production
+
     def locatePerformanceByProductionId(self, productionId):
         try:
             productionId = int(productionId)
@@ -95,29 +104,38 @@ class PerformanceService:
 
         performances = self.performanceRepo.locatePerformanceByProductionId(productionId)
 
-        if performances:
-            return performances
+        if not performances:
+            return "No performances found for this production."
 
-        return "No performances found for this production."
+        performance_list = []
 
-    # locates all performances scheduled on a specific date
+        for performance in performances:
+            performance_list.append(self.__performance_dictionary(performance))
+
+        return performance_list
+    
     def locatePerformanceByDate(self, date):
         if date is None or str(date).strip() == "":
             return "Performance date is required."
 
         try:
-            datetime.strptime(str(date), "%Y-%m-%d")
+            date = self.convertDate(date)
         except ValueError:
             return "Invalid date format. Use YYYY-MM-DD."
 
         performances = self.performanceRepo.locatePerformanceByDate(date)
 
-        if performances:
-            return performances
+        if not performances:
+            return "No performances found on this date."
 
-        return "No performances found on this date."
+        performance_list = []
 
-    # locates a performance by production, date, start time, and end time
+        for performance in performances:
+            performance_list.append(self.__performance_dictionary(performance))
+
+        return performance_list
+
+
     def locatePerformanceSchedule(self, productionId, date, startTime, endTime):
         try:
             productionId = int(productionId)
@@ -139,11 +157,10 @@ class PerformanceService:
         )
 
         if performance:
-            return performance
+            return self.__performance_dictionary(performance)
 
         return "Performance schedule does not exist."
 
-    # validates performance details before create or update
     def __checkPerformance(self, performance, isUpdate=False):
         if performance.productionId is None:
             return "Production ID is required."
@@ -204,11 +221,46 @@ class PerformanceService:
                 return "Performance schedule already exists."
 
         return True
+    
+# -----------------------------------Formats
+    
+    def __format_date(self, value):
+        if value is None:
+            return None
 
-    # converts date into YYYY-MM-DD format
+        if hasattr(value, "strftime"):
+            return value.strftime("%m/%d/%Y")
+
+        return str(value)
+
+    def __format_time(self, value):
+        if value is None:
+            return None
+
+        if hasattr(value, "strftime"):
+            return value.strftime("%I:%M %p").lstrip("0")
+
+        return str(value)
+
+    def __performance_dictionary(self, performance):
+        return {
+            "performance_id": performance[0],
+            "production_id": performance[1],
+            "start_time": self.__format_time(performance[2]),
+            "end_time": self.__format_time(performance[3]),
+            "date": self.__format_date(performance[4]),
+            "total_seats": performance[5]
+        }
+
+    def __performance_time_dictionary(self, performance):
+        return {
+            "start_time": self.__format_time(performance[0]),
+            "end_time": self.__format_time(performance[1])
+        }
+
+
     def convertDate(self, date):
         return datetime.strptime(str(date), "%Y-%m-%d").date()
 
-    # converts time into HH:MM:SS format
     def convertTime(self, time):
         return datetime.strptime(str(time), "%H:%M:%S").time()

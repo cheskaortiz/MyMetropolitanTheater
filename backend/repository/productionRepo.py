@@ -45,7 +45,8 @@ class ProductionRepo:
         with self.connect.cursor() as cur:
             cur.execute(
                 """
-                SELECT * FROM production
+                SELECT production_id, title
+                FROM production
                 WHERE production_id = %s
                 """,
                 (productionId,)

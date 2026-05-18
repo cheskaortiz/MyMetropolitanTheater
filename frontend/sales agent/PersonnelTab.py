@@ -415,20 +415,6 @@ def show_employee(emp):
     pay_row = tk.Frame(card2, bg=BG_PANEL)
     pay_row.pack(fill="x", padx=20, pady=(14, 16))
 
-    pt_col = tk.Frame(pay_row, bg=BG_PANEL)
-    pt_col.pack(side="left", padx=(0, 30))
-    tk.Label(pt_col, text="Pay Type", fg=TEXT_DARK, bg=BG_PANEL,
-             font=(FONT, 10, "bold")).pack(anchor="w")
-
-    # ── Pay Type — loaded from DB staff type ───────────────────────────────
-    pay_types = ["Monthly", "Hourly", "Commissioned"]
-    pay_var   = tk.StringVar(value=emp.get("role", "Select"))
-    pay_combo = ttk.Combobox(pt_col, textvariable=pay_var,
-                             values=pay_types,
-                             state="readonly", font=(FONT, 10), width=14)
-    pay_combo.set(emp.get("role", "Select"))
-    pay_combo.pack(anchor="w", pady=(6, 0))
-
     ms_col = tk.Frame(pay_row, bg=BG_PANEL)
     ms_col.pack(side="left", padx=(0, 30))
     tk.Label(ms_col, text="Monthly Salary", fg=TEXT_DARK, bg=BG_PANEL,

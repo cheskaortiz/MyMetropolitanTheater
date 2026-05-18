@@ -771,6 +771,7 @@ def build_personnel_tab(parent):
 
         for dept_id, dept_name in dept_rows:
             staff_list = db_load_staff_by_department(dept_id)
+            total_count = len(staff_list)
 
             if q:
                 staff_list = [e for e in staff_list
@@ -785,7 +786,7 @@ def build_personnel_tab(parent):
             wrapper.pack(fill="x", pady=2, padx=8)
             dept_row = tk.Frame(wrapper, bg=BG_INPUT, cursor="hand2")
             dept_row.pack(fill="x")
-            dept_lbl = tk.Label(dept_row, text=dept_name, bg=BG_INPUT, fg=TEXT_DARK,
+            dept_lbl = tk.Label(dept_row, text=f"{dept_name} ({total_count})", bg=BG_INPUT, fg=TEXT_DARK,
                                 font=(FONT, 10), anchor="w")
             dept_lbl.pack(side="left", padx=8, pady=8, fill="x", expand=True)
             arrow = tk.Label(dept_row, text="∨", bg=BG_INPUT, fg=TEXT_MID, font=(FONT, 10))
@@ -1025,8 +1026,28 @@ def build_customers_tab(parent):
 
     tk.Frame(table_frame, bg=DIVIDER, height=1).pack(fill="x", padx=16)
 
-    rows_container = tk.Frame(table_frame, bg=BG_PANEL)
-    rows_container.pack(fill="both", expand=True)
+    # ── Scrollable rows area ──────────────────────────────────────────────────
+    scroll_outer = tk.Frame(table_frame, bg=BG_PANEL)
+    scroll_outer.pack(fill="both", expand=True)
+
+    cust_canvas = tk.Canvas(scroll_outer, bg=BG_PANEL, highlightthickness=0, bd=0)
+    cust_scroll  = tk.Scrollbar(scroll_outer, orient="vertical", command=cust_canvas.yview)
+    cust_canvas.configure(yscrollcommand=cust_scroll.set)
+    cust_scroll.pack(side="right", fill="y")
+    cust_canvas.pack(side="left", fill="both", expand=True)
+
+    rows_container = tk.Frame(cust_canvas, bg=BG_PANEL)
+    rows_win = cust_canvas.create_window((0, 0), window=rows_container, anchor="nw")
+
+    def _on_rows_cfg(_):
+        cust_canvas.configure(scrollregion=cust_canvas.bbox("all"))
+    rows_container.bind("<Configure>", _on_rows_cfg)
+    cust_canvas.bind("<Configure>", lambda e: cust_canvas.itemconfig(rows_win, width=e.width))
+
+    def _on_cust_scroll(event):
+        cust_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    cust_canvas.bind("<MouseWheel>", _on_cust_scroll)
+    rows_container.bind("<MouseWheel>", _on_cust_scroll)
 
     # Load all customers from DB once
     ALL_CUSTOMERS = db_load_customers()
@@ -1042,9 +1063,13 @@ def build_customers_tab(parent):
             row_bg = BG_TABLE_ROW if i % 2 == 0 else BG_TABLE_ALT
             row = tk.Frame(rows_container, bg=row_bg)
             row.pack(fill="x", padx=16)
+            for w in [row]:
+                w.bind("<MouseWheel>", _on_cust_scroll)
             for val, cw in zip([cust["name"], cust["email"], cust["mobile"]], col_widths[:3]):
-                tk.Label(row, text=val, fg=TEXT_DARK, bg=row_bg,
-                         font=(FONT, 10), width=cw, anchor="w").pack(side="left", pady=10)
+                lbl = tk.Label(row, text=val, fg=TEXT_DARK, bg=row_bg,
+                         font=(FONT, 10), width=cw, anchor="w")
+                lbl.pack(side="left", pady=10)
+                lbl.bind("<MouseWheel>", _on_cust_scroll)
             make_canvas_btn(row, "View History",
                             lambda c=cust: open_transaction_history(c),
                             w=110, h=28, bg=row_bg).pack(side="left", padx=4)

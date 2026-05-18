@@ -44,6 +44,37 @@ class CustomerService:
             }
 
         return validation
+    
+    def getOrCreateCustomer(self, name, email, mobileNumber):
+        # 1. Look up if the customer already exists by email
+        existing_row = self.customerRepo.locateCustomerEmail(str(email).strip())
+        if existing_row:
+            return existing_row[0]  # Returns the existing customer_id integer
+            
+        # 2. If not found, prepare a new domain object to insert
+        # Note: Replace 'Customer' with your actual class import if named differently
+        from objects.customer import Customer  
+        
+        new_customer = Customer(
+            name=name,
+            email=email,
+            mobileNumber=mobileNumber
+        )
+        
+        # 3. Validate and insert using your existing layout
+        validation = self.__checkCustomer(new_customer)
+        if validation is not True:
+            return f"Customer validation failed: {validation}"
+            
+        # Execute raw database insertion
+        self.customerRepo.createCustomer(new_customer)
+        
+        # 4. Pull the record one more time to grab the newly assigned auto-increment ID
+        saved_row = self.customerRepo.locateCustomerEmail(new_customer.email)
+        if saved_row:
+            return saved_row[0]
+            
+        return "Failed to retrieve newly created customer ID."
 
     # Retrieves all customer records.
     def viewAllCustomer(self):

@@ -24,6 +24,10 @@ class TicketRepo:
                     newTicket.saleDate
                 )
             )
+            cur.execute(
+                "UPDATE performance_seat SET is_available = FALSE WHERE performance_seat_id = %s",
+                (newTicket.performanceSeatId,)
+            )
         self.connect.commit()
     
     # call to update ticket

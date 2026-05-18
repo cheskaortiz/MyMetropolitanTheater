@@ -55,7 +55,7 @@ class TicketService:
 
         return f"{productionId}{last3}{mmddhh}"
 
-    def purchaseTicket(self, performanceSeatId, customerId, status, saleDate):
+    def purchaseTicket(self, performanceSeatId, customerId, status, saleDate, ticketNumber):
         ticketNumber = self.generateTicketNumber(performanceSeatId)
 
         if not ticketNumber:

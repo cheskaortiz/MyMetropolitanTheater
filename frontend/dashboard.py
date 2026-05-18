@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sys
 import os
-import psycopg2
+import psycopg2 #
 
 # ── Database Connection ────────────────────────────────────────────────────────
 # TODO: Update these credentials to match your PostgreSQL setup

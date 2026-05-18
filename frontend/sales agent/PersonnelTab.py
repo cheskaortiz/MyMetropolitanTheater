@@ -86,9 +86,10 @@ def load_staff_by_department(department_id):
         conn = get_connection()
         cur  = conn.cursor()
         cur.execute("""
-            SELECT s.staff_id, s.name, s.type, d.name AS dept_name
+            SELECT s.staff_id, s.name, s.type, d.name AS dept_name, ft.monthly_salary
             FROM   Staff s
             JOIN   Department d ON d.department_id = s.department_id
+            LEFT JOIN Full_Time ft ON s.staff_id = ft.staff_id
             WHERE  s.department_id = %s
             ORDER  BY s.name;
         """, (department_id,))
@@ -96,7 +97,8 @@ def load_staff_by_department(department_id):
         cur.close(); conn.close()
         return [
             {"id": f"STAFF-{r[0]:02d}", "name": r[1],
-             "role": r[2], "dept": r[3], "staff_id": r[0]}
+             "role": r[2], "dept": r[3], "staff_id": r[0],
+             "salary": r[4]}
             for r in rows
         ]
     except Exception as e:
@@ -475,7 +477,7 @@ def show_employee(emp):
 
     th_row = tk.Frame(card3, bg=BG_PANEL)
     th_row.pack(fill="x", padx=20, pady=(6, 2))
-    for col_text, col_w in [("Date", 14), ("Staff ID", 16), ("Hours Worked", 16)]:
+    for col_text, col_w in [("Date", 14), ("Staff ID", 16), ("Hours Worked", 16), ("Salary", 16)]:
         tk.Label(th_row, text=col_text, fg=ACCENT, bg=BG_PANEL,
                  font=(FONT, 10, "bold"), width=col_w, anchor="w").pack(side="left")
     tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)
@@ -485,7 +487,12 @@ def show_employee(emp):
         row_bg = TEXT_LIGHT if i % 2 == 0 else BG_TABLE_ALT
         rw = tk.Frame(card3, bg=row_bg)
         rw.pack(fill="x", padx=20)
-        for val, cw in [(date, 14), (sid, 16), (hrs, 16)]:
+
+        salary_val = ""
+        if emp.get("role") == "Full_Time" and emp.get("salary") is not None:
+            salary_val = f"₱{float(emp['salary']):,.2f}"
+
+        for val, cw in [(date, 14), (sid, 16), (hrs, 16), (salary_val, 16)]:
             tk.Label(rw, text=val, fg=TEXT_DARK, bg=row_bg,
                      font=(FONT, 10), width=cw, anchor="w").pack(side="left", pady=8)
         tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)

@@ -116,7 +116,8 @@ def handle_login():
     dashboard_path = os.path.join(os.path.dirname(__file__), '..', 'frontend')
     if dashboard_path not in sys.path:
         sys.path.append(dashboard_path)
-    from Dashboard import open_dashboard
+    # Ensure the filename below matches your actual file (e.g., dashboard_v2.py)
+    # from Dashboard import open_dashboard
 
     db = start_database()
     if not db:

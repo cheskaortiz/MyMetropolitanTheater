@@ -9,7 +9,7 @@ DB_CONFIG = {
     "port":     5432,
     "dbname":   "MyMetropolitanTheaterDatabase",   # change to your actual DB name
     "user":     "postgres",                # change to your DB user
-    "password": "AKOSICYAN69",            # change to your DB password
+    "password": "ortiz1004",            # change to your DB password
 }
 
 def get_connection():

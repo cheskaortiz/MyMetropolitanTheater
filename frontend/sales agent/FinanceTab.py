@@ -5,7 +5,7 @@ from tkinter import ttk
 BG_MAIN      = "#B0B0B0"
 BG_TOPBAR    = "#1E1E1E"
 BG_SIDEBAR   = "#9A9A9A"
-BG_SIDEBAR_H = "#888888"
+BG_SIDEBAR_H = "#888888"    
 BG_ACTIVE    = "#C8C8C8"
 BG_CARD      = "#F0F0F0"
 BG_SEARCH    = "#E8E8E8"

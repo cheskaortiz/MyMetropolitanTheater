@@ -47,11 +47,11 @@ class PerformanceSeatRepo:
             )
             self.connect.commit()
     
-    # # call to delete performance seat
-    # def deletePerformanceSeat(self, performanceSeatId):
-    #     with self.connect.cursor() as cur:
-    #         cur.execute("DELETE FROM performance_seat WHERE performance_seat_id = %s", (performanceSeatId,))
-    #         self.connect.commit()
+    # call to delete performance seat
+    def deletePerformanceSeat(self, performanceSeatId):
+        with self.connect.cursor() as cur:
+            cur.execute("DELETE FROM performance_seat WHERE performance_seat_id = %s", (performanceSeatId,))
+            self.connect.commit()
 
     # checks if performance seat exists
     # def findPerformanceSeat(self, performanceSeatId):
@@ -156,7 +156,6 @@ class PerformanceSeatRepo:
             return None
         
     # locates a performance seat by seat ID and performance ID
-    # used to prevent duplicate seat assignments to the same performance
     # requirement: database must monitor that no duplicate seats can be assigned to a single performance
     def locatePerformanceSeatBySeatAndPerformance(self, seatId, performanceId):
         with self.connect.cursor() as cur:

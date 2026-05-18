@@ -41,7 +41,7 @@ class DepartmentRepo:
                 SELECT 
                     d.name,
                     s.staff_id,
-                    s.name AS staff_name
+                    s.name AS staff_name,
                     s.type AS type
                 FROM Department d
                 LEFT JOIN Staff s 

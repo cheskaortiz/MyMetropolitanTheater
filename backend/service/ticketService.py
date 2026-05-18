@@ -1,48 +1,61 @@
+from datetime import datetime, date
+
 from repository.ticketRepo import TicketRepo
 from objects.ticket import Ticket
+
 
 class TicketService:
     def __init__(self, conn):
         self.ticketRepo = TicketRepo(conn)
 
-    # Used for creating a ticket record. for ticket purchasing/reservation.
-    # requirement: ticket must have valid performance seat, customer, status, date, and ticket number
+    #  call to creat ticket
+    #  needed attribute are performance seat id, customer id, status, ticket num, 
     def createTicket(self, ticket):
+        if ticket is None:
+            return "Ticket data is required."
+
+        # Generate ticket number if missing
+        if not ticket.ticketNumber:
+            ticket.ticketNumber = self.generateTicketNumber(ticket.performanceSeatId)
+
+            if not ticket.ticketNumber:
+                return "Cannot generate ticket number. Invalid performance seat."
+
         validation = self.__checkTicket(ticket)
 
         if validation is True:
             self.ticketRepo.createTicket(ticket)
-            return "Successfully created ticket"
-        
+
+            return {
+                "message": "Successfully created ticket.",
+                "ticket_number": ticket.ticketNumber
+            }
+
         return validation
 
-    # Uretrieves all all ticket records
-    def viewAllTickets(self):
-        return self.ticketRepo.getAllTickets()
-
-    # the requirement that the system should generate a ticket code, ticket number
-    # requirement: <production_num><last 3 letters of title><mmddhh of performance>
-    # example: 1cal011519 = production 1, "The Notebook: The Musical", Jan 15 at 19:00
+    #  call to generate ticketNumber
     def generateTicketNumber(self, performanceSeatId):
+        try:
+            performanceSeatId = int(performanceSeatId)
+        except (ValueError, TypeError):
+            return None
+
         row = self.ticketRepo.getTicketDataForTicketNumber(performanceSeatId)
+
         if not row:
             return None
 
         productionId = row[0]
         title = row[1]
-        date = row[2]
+        performanceDate = row[2]
         startTime = row[3]
-        #endTIme not included unless necessary
-        
+
         last3 = title[-3:].lower()
-        mmddhh = date.strftime("%m%d") + startTime.strftime("%H")
+        mmddhh = performanceDate.strftime("%m%d") + startTime.strftime("%H")
 
         return f"{productionId}{last3}{mmddhh}"
 
-    #  creates a ticket for a selected performance seat and customer.
-    # requirement: Purchase Tickets by Performance — only sales agents can process
-    # automatically generates ticket number before saving
-    def purchaseTicket(self, performanceSeatId, customerId, status, saleDate): 
+    def purchaseTicket(self, performanceSeatId, customerId, status, saleDate):
         ticketNumber = self.generateTicketNumber(performanceSeatId)
 
         if not ticketNumber:
@@ -60,62 +73,126 @@ class TicketService:
 
         if validation is True:
             self.ticketRepo.createTicket(newTicket)
-            return ticketNumber
+
+            return {
+                "message": "Successfully purchased/reserved ticket.",
+                "ticket_number": ticketNumber
+            }
 
         return validation
 
-    # Used for changing the status of a ticket (sold, refunded, reserved)
-    # requirement: Management tracks refunds and reservations
-    # tickets are never deleted, only their status changes
-    def updateTicketStatus(self, ticketId, newStatus):
-        findTicket = self.ticketRepo.locateTicketId(ticketId)
+    def viewAllTickets(self):
+        tickets = self.ticketRepo.getAllTickets()
+        return self.__format_basic_ticket_list(tickets)
 
-        if not findTicket:
-            return False
-
-        self.ticketRepo.updateTicketStatus(ticketId, newStatus)
-        return True
-
-    # Used for viewing complete ticket information.
-    # requirement that ticket details should show customer, production, performance date/time, seat number, seat view, price, and ticket status.
+    # Needed attributes: performance seat id and customer id
     def viewTicketDetails(self, performanceSeatId, customerId):
-        return self.ticketRepo.getTicketDetails(performanceSeatId, customerId)
+        try:
+            performanceSeatId = int(performanceSeatId)
+            customerId = int(customerId)
+        except (ValueError, TypeError):
+            return "Performance seat ID and customer ID must be numbers."
 
-    # to search a ticket by ticket ID. used before updating or viewing one specific ticket.
+        details = self.ticketRepo.getTicketDetails(performanceSeatId, customerId)
+        return self.__format_ticket_details_list(details)
+
     def locateTicketId(self, ticketId):
         try:
             ticketId = int(ticketId)
-        except ValueError:
-            return "Invalid ticketId. Must be a number."
+        except (ValueError, TypeError):
+            return "Invalid ticket ID. Must be a number."
 
         ticket = self.ticketRepo.locateTicketId(ticketId)
 
         if ticket:
-            return ticket
+            return self.__format_basic_ticket(ticket)
 
         return "Ticket does not exist."
 
-    # to search a ticket by its generated ticket number. helps verify if a ticket code exists.
     def locateTicketByNumber(self, ticketNumber):
-        return self.ticketRepo.locateTicketNumber(ticketNumber)
+        if not ticketNumber:
+            return "Ticket number is required."
 
-    # to view all tickets of one customer.
+        ticket = self.ticketRepo.locateTicketNumber(ticketNumber)
+
+        if ticket:
+            return self.__format_basic_ticket(ticket)
+
+        return "Ticket does not exist."
+
+    def locateTicketByPerformanceSeatId(self, performanceSeatId):
+        try:
+            performanceSeatId = int(performanceSeatId)
+        except (ValueError, TypeError):
+            return "Invalid performance seat ID. Must be a number."
+
+        ticket = self.ticketRepo.locateTicketByPerformanceSeatId(performanceSeatId)
+
+        if ticket:
+            return self.__format_basic_ticket(ticket)
+
+        return "Ticket does not exist."
+
     def locateTicketsByCustomer(self, customerId):
-        return self.ticketRepo.locateTicketsByCustomerId(customerId)
+        try:
+            customerId = int(customerId)
+        except (ValueError, TypeError):
+            return "Invalid customer ID. Must be a number."
 
-    # to locate all the tickets by status (sold, reserve, refund)
+        tickets = self.ticketRepo.locateTicketsByCustomerId(customerId)
+        return self.__format_basic_ticket_list(tickets)
+
     def locateTicketsByStatus(self, status):
-        return self.ticketRepo.locateTicketsByStatus(status)
+        if not status:
+            return "Status is required."
 
-    # Used for viewing tickets under one production.
+        status = status.lower().strip()
+
+        if status not in ["sold", "refunded", "reserved"]:
+            return "Status must be sold, refunded, or reserved."
+
+        tickets = self.ticketRepo.locateTicketsByStatus(status)
+        return self.__format_basic_ticket_list(tickets)
+
     def locateTicketsByProduction(self, productionId):
-        return self.ticketRepo.locateTicketsByProductionId(productionId)
-    
-    # locates tickets by sale date — supports Transaction Report filtering by date
-    def locateTicketsBySaleDate(self, saleDate):
-        return self.ticketRepo.locateTicketsBySaleDate(saleDate)
+        try:
+            productionId = int(productionId)
+        except (ValueError, TypeError):
+            return "Invalid production ID. Must be a number."
 
-    # for checking if completedetails before creating new ticker
+        tickets = self.ticketRepo.locateTicketsByProductionId(productionId)
+        return self.__format_basic_ticket_list(tickets)
+
+    def locateTicketsBySaleDate(self, saleDate):
+        if not saleDate:
+            return "Sale date is required."
+
+        tickets = self.ticketRepo.locateTicketsBySaleDate(saleDate)
+        return self.__format_basic_ticket_list(tickets)
+
+    def updateTicketStatus(self, ticketId, newStatus):
+        try:
+            ticketId = int(ticketId)
+        except (ValueError, TypeError):
+            return "Invalid ticket ID. Must be a number."
+
+        if not newStatus:
+            return "Status is required."
+
+        newStatus = newStatus.lower().strip()
+
+        if newStatus not in ["sold", "refunded", "reserved"]:
+            return "Status must be sold, refunded, or reserved."
+
+        findTicket = self.ticketRepo.locateTicketId(ticketId)
+
+        if not findTicket:
+            return "Ticket does not exist."
+
+        self.ticketRepo.updateTicketStatus(ticketId, newStatus)
+
+        return "Successfully updated ticket status."
+
     def __checkTicket(self, ticket):
         if not ticket.performanceSeatId:
             return "Performance seat ID is required."
@@ -125,12 +202,12 @@ class TicketService:
 
         try:
             ticket.performanceSeatId = int(ticket.performanceSeatId)
-        except ValueError:
+        except (ValueError, TypeError):
             return "Performance seat ID must be a number."
 
         try:
             ticket.customerId = int(ticket.customerId)
-        except ValueError:
+        except (ValueError, TypeError):
             return "Customer ID must be a number."
 
         if not ticket.saleDate:
@@ -147,4 +224,102 @@ class TicketService:
         if ticket.status not in ["sold", "refunded", "reserved"]:
             return "Status must be sold, refunded, or reserved."
 
+        existingTicket = self.ticketRepo.locateTicketByPerformanceSeatId(ticket.performanceSeatId)
+
+        if existingTicket:
+            return "This performance seat already has an existing ticket."
+
         return True
+
+# ----------------------------Formats
+    
+    def __format_date(self, value):
+        if value is None:
+            return None
+
+        if hasattr(value, "strftime"):
+            return value.strftime("%m/%d/%Y")
+
+        try:
+            return datetime.strptime(str(value), "%Y-%m-%d").strftime("%m/%d/%Y")
+        except ValueError:
+            return str(value)
+
+    def __format_time(self, value):
+        if value is None:
+            return None
+
+        if hasattr(value, "strftime"):
+            return value.strftime("%I:%M %p").lstrip("0")
+
+        return str(value)
+
+    def __format_basic_ticket(self, ticket):
+        """
+        Used for repo methods that return SELECT * FROM ticket.
+
+        Expected row format:
+        ticket_id, performance_seat_id, customer_id, status, ticket_number, sale_date
+        """
+
+        if not ticket:
+            return None
+
+        return {
+            "ticket_id": ticket[0],
+            "performance_seat_id": ticket[1],
+            "customer_id": ticket[2],
+            "status": ticket[3],
+            "ticket_number": ticket[4],
+            "sale_date": self.__format_date(ticket[5])
+        }
+
+    def __format_basic_ticket_list(self, tickets):
+        if not tickets:
+            return []
+
+        ticket_list = []
+
+        for ticket in tickets:
+            ticket_list.append(self.__format_basic_ticket(ticket))
+
+        return ticket_list
+
+    def __format_ticket_details(self, ticket):
+        """
+        Used only for getTicketDetails(), because that repo method returns joined data.
+
+        Expected row format:
+        ticket_id, ticket_number, status, sale_date, customer_name,
+        production_title, performance_date, start_time, end_time,
+        seat_number, seat_view, price
+        """
+
+        if not ticket:
+            return None
+
+        return {
+            "ticket_id": ticket[0],
+            "ticket_number": ticket[1],
+            "status": ticket[2],
+            "sale_date": self.__format_date(ticket[3]),
+            "customer_name": ticket[4],
+            "production_title": ticket[5],
+            "performance_date": self.__format_date(ticket[6]),
+            "start_time": self.__format_time(ticket[7]),
+            "end_time": self.__format_time(ticket[8]),
+            "seat_number": ticket[9],
+            "seat_view": ticket[10],
+            "price": ticket[11]
+        }
+
+    def __format_ticket_details_list(self, tickets):
+        if not tickets:
+            return []
+
+        ticket_details = []
+
+        for ticket in tickets:
+            ticket_details.append(self.__format_ticket_details(ticket))
+
+        return ticket_details

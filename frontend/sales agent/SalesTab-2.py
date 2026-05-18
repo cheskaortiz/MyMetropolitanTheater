@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, date
 
-# ── Path Fix (same pattern as personnel tab) ──────────────────────────────────
+# ── Path Fix ──────────────────────────────────────────────────────────────────
 def setup_backend_path():
     current_dir = os.path.abspath(os.path.dirname(__file__))
     for _ in range(8):
@@ -23,27 +23,26 @@ def setup_backend_path():
 
 setup_backend_path()
 
-
 BACKEND_IMPORT_ERROR = None
 try:
     from backend.start_database import start_database
 except Exception as e:
-    start_database        = None
-    BACKEND_IMPORT_ERROR  = e
+    start_database       = None
+    BACKEND_IMPORT_ERROR = e
 
 try:
-    from backend.objects.production import Transaction
+    from backend.objects.transaction import Transaction
 except Exception:
     class Transaction:
         def __init__(self, ticketId=None, staffId=None, transactionDate=None,
-                        type=None, amount=None):
+                     type=None, amount=None):
             self.ticketId        = ticketId
             self.staffId         = staffId
             self.transactionDate = transactionDate
             self.type            = type
             self.amount          = amount
 
-# ── Palette (shared — do not change) ──────────────────────────────────────────
+# ── Palette ───────────────────────────────────────────────────────────────────
 BG_MAIN      = "#B0B0B0"
 BG_TOPBAR    = "#1E1E1E"
 BG_SIDEBAR   = "#9A9A9A"
@@ -66,7 +65,25 @@ SEAT_AVAIL_H = "#27AE36"
 FONT = "Helvetica"
 
 
-# ── Time / Date utilities (same as original) ──────────────────────────────────
+# ── Simple session object — replace with your real login session ──────────────
+class AppSession:
+    def __init__(self, staff_id=23, staff_name="Marius Aquino",
+                 staff_type="Commissioned"):
+        self.staff_id   = staff_id
+        self.staff_name = staff_name
+        self.staff_type = staff_type          # 'Full_Time' | 'Hourly' | 'Commissioned'
+
+    @property
+    def is_manager(self):
+        return self.staff_type == "Full_Time"
+
+    @property
+    def can_transact(self):
+        """Only commissioned (sales agents) may issue tickets."""
+        return self.staff_type == "Commissioned"
+
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
 def fmt_short_date(v):
     if v is None: return "—"
     if isinstance(v, (datetime, date)): return v.strftime("%b %d")
@@ -87,7 +104,7 @@ def fmt_time(v):
     return v
 
 
-# ── ModernButton (unchanged from original) ────────────────────────────────────
+# ── ModernButton ──────────────────────────────────────────────────────────────
 class ModernButton(tk.Canvas):
     def __init__(self, parent, text, command=None, width=140, height=36,
                  radius=6, bg=ACCENT, hbg=ACCENT_HOVER, fg=TEXT_LIGHT,
@@ -103,47 +120,75 @@ class ModernButton(tk.Canvas):
         self.normal_bg = bg
         self.hover_bg  = hbg
         self.fg        = fg
-        self.state     = state
+        self._state    = state
         self._draw(self.normal_bg)
-        if self.state == "normal":
+        if self._state == "normal":
             self.bind("<Enter>",    lambda e: self._draw(self.hover_bg))
             self.bind("<Leave>",    lambda e: self._draw(self.normal_bg))
             self.bind("<Button-1>", lambda e: self._click())
 
     def _draw(self, color):
         self.delete("all")
-        c = "#CCCCCC" if self.state == "disabled" else color
+        c = "#CCCCCC" if self._state == "disabled" else color
         r = self.r
         for ox, oy in [(0,0),(self.w-r*2,0),(0,self.h-r*2),(self.w-r*2,self.h-r*2)]:
             self.create_oval(ox, oy, ox+r*2, oy+r*2, fill=c, outline=c)
         self.create_rectangle(r, 0, self.w-r, self.h, fill=c, outline=c)
         self.create_rectangle(0, r, self.w, self.h-r, fill=c, outline=c)
-        tc = "#888888" if self.state == "disabled" else self.fg
+        tc = "#888888" if self._state == "disabled" else self.fg
         self.create_text(self.w//2, self.h//2, text=self.text,
                          fill=tc, font=(FONT, 10, "bold"))
 
     def _click(self):
-        if self.command and self.state == "normal":
+        if self.command and self._state == "normal":
             self.command()
+
+    def set_state(self, state):
+        self._state = state
+        self.config(cursor="hand2" if state == "normal" else "arrow")
+        self._draw(self.normal_bg)
+        if state == "normal":
+            self.bind("<Enter>",    lambda e: self._draw(self.hover_bg))
+            self.bind("<Leave>",    lambda e: self._draw(self.normal_bg))
+            self.bind("<Button-1>", lambda e: self._click())
+        else:
+            self.unbind("<Enter>")
+            self.unbind("<Leave>")
+            self.unbind("<Button-1>")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  SALES TAB — drop-in replacement for the original SalesBackendComboTest class
+#  SALES TAB
 # ═════════════════════════════════════════════════════════════════════════════
 class SalesTab(tk.Tk):
     """
-    Full sales workflow:
-      Production combo  →  Performance combo  →  30-seat grid
-      →  Seat click (price + view preview)
-      →  Customer fields  →  Confirm Purchase
-         calls purchaseTicket() + createTransaction()
+    Sales workflow:
+      1. Select Production → Performance → Seat
+      2. Fill customer details
+      3. Confirm & Issue Ticket
+         - purchaseTicket()    → creates Ticket row + marks seat unavailable
+         - createTransaction() → records commission-trackable transaction
+         - Right panel updates to show the issued receipt (no popup)
+
+    Access rules (from case study):
+      • Commissioned staff  → full access (select + purchase/reserve)
+      • Full_Time (manager) → view-only  (cannot issue tickets)
+      • Hourly staff        → no access  (handled at login level)
+
+    Commission tracking:
+      Every createTransaction() call stores staff_id + amount in Transactions.
+      Managers view commission via TransactionService.viewCommissionByStaff()
+      in the Finances tab — no extra work needed here.
     """
 
-    def __init__(self):
+    def __init__(self, session: AppSession = None):
         super().__init__()
         self.title("My Metropolitan Theater — Box Office")
         self._center(1420, 840)
         self.configure(bg=BG_MAIN)
+
+        # session: who is logged in
+        self.session = session or AppSession()
 
         self.db = start_database()
         if not self.db:
@@ -152,18 +197,22 @@ class SalesTab(tk.Tk):
             return
 
         # ── state ─────────────────────────────────────────────────────────────
-        self.prod_map         = {}   # title  → production_id
-        self.perf_map         = {}   # label  → performance dict
-        self.seat_map         = {}   # performance_seat_id → seat dict
-        self.active_btns      = {}   # performance_seat_id → (btn, base_color)
+        self.prod_map    = {}
+        self.perf_map    = {}
+        self.seat_map    = {}
+        self.active_btns = {}
 
-        self.sel_prod_id      = None
-        self.sel_prod_title   = None
-        self.sel_perf_id      = None
-        self.sel_ps_id        = None   # selected performance_seat_id
-        self.sel_seat_name    = None
-        self.sel_seat_price   = 0.0
-        self.sel_seat_view    = ""
+        self.sel_prod_id    = None
+        self.sel_prod_title = None
+        self.sel_perf_id    = None
+        self.sel_perf_label = None
+        self.sel_ps_id      = None
+        self.sel_seat_name  = None
+        self.sel_seat_price = 0.0
+        self.sel_seat_view  = ""
+
+        # receipt mode: "form" (input) or "issued" (show receipt)
+        self._receipt_mode = "form"
 
         # ── build UI ──────────────────────────────────────────────────────────
         self._build_topbar()
@@ -172,15 +221,33 @@ class SalesTab(tk.Tk):
         self._build_sidebar(body)
         content = tk.Frame(body, bg=BG_MAIN)
         content.pack(side="left", fill="both", expand=True, padx=16, pady=16)
-        tk.Label(content, text="Box Office  —  Ticketing Interface",
+
+        # header row: title + logged-in staff badge
+        hdr = tk.Frame(content, bg=BG_MAIN)
+        hdr.pack(fill="x", pady=(0, 10))
+        tk.Label(hdr, text="Box Office  —  Ticketing Interface",
                  fg=ACCENT, bg=BG_MAIN,
-                 font=(FONT, 20, "bold")).pack(anchor="w", pady=(0, 10))
+                 font=(FONT, 20, "bold")).pack(side="left")
+
+        # staff badge top-right
+        badge_bg = "#2E2E2E"
+        badge = tk.Frame(hdr, bg=badge_bg, padx=10, pady=4)
+        badge.pack(side="right")
+        role_lbl = "Manager" if self.session.is_manager else "Sales Agent"
+        tk.Label(badge,
+                 text=f"👤  {self.session.staff_name}  ·  {role_lbl}",
+                 bg=badge_bg, fg=TEXT_LIGHT,
+                 font=(FONT, 9)).pack()
+
         main_row = tk.Frame(content, bg=BG_MAIN)
         main_row.pack(fill="both", expand=True)
         self._build_left(main_row)
         self._build_right(main_row)
 
-        # ── initial data load ─────────────────────────────────────────────────
+        # if manager, show view-only notice on right panel
+        if self.session.is_manager:
+            self._show_manager_notice()
+
         self._load_productions()
 
     # ── window centering ──────────────────────────────────────────────────────
@@ -188,7 +255,7 @@ class SalesTab(tk.Tk):
         ws, hs = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(ws-w)//2}+{(hs-h)//2}")
 
-    # ── top bar (unchanged from original) ─────────────────────────────────────
+    # ── top bar ───────────────────────────────────────────────────────────────
     def _build_topbar(self):
         tb = tk.Frame(self, bg=BG_TOPBAR, height=45)
         tb.pack(fill="x", side="top")
@@ -197,7 +264,7 @@ class SalesTab(tk.Tk):
                  fg=ACCENT, bg=BG_TOPBAR,
                  font=(FONT, 13, "bold")).pack(side="left", padx=18, pady=10)
 
-    # ── sidebar (unchanged from original — do NOT touch) ─────────────────────
+    # ── sidebar (DO NOT CHANGE — shared across tabs) ──────────────────────────
     def _build_sidebar(self, parent):
         sb = tk.Frame(parent, bg=BG_SIDEBAR, width=175)
         sb.pack(side="left", fill="y")
@@ -206,23 +273,22 @@ class SalesTab(tk.Tk):
                              ("👤","Personnel"),("💰","Finances"),("👥","Customers")]:
             active = label == "Sales"
             bg = BG_ACTIVE if active else BG_SIDEBAR
-            fg = ACCENT   if active else TEXT_LIGHT
+            fg = ACCENT    if active else TEXT_LIGHT
             fr = tk.Frame(sb, bg=bg); fr.pack(fill="x")
             tk.Label(fr, text=icon,  bg=bg, fg=fg,
                      font=("Arial",13), width=3).pack(side="left", padx=(10,4), pady=12)
             tk.Label(fr, text=label, bg=bg, fg=fg,
                      font=(FONT,12,"bold" if active else "normal")).pack(side="left")
 
-    # ── left panel: selectors + seat grid + preview ───────────────────────────
+    # ── left panel ────────────────────────────────────────────────────────────
     def _build_left(self, parent):
         lp = tk.Frame(parent, bg=BG_PANEL)
         lp.pack(side="left", fill="both", expand=True, padx=(0, 12))
 
-        # ── COMPONENT A: dual combo selectors ─────────────────────────────────
+        # combos
         sel_row = tk.Frame(lp, bg=BG_PANEL)
         sel_row.pack(fill="x", padx=16, pady=12)
 
-        # Production combo
         pf = tk.Frame(sel_row, bg=BG_PANEL)
         pf.pack(side="left", fill="x", expand=True, padx=(0, 10))
         tk.Label(pf, text="Select Production", bg=BG_PANEL, fg=TEXT_DARK,
@@ -231,7 +297,6 @@ class SalesTab(tk.Tk):
         self.prod_combo.pack(fill="x")
         self.prod_combo.bind("<<ComboboxSelected>>", self._on_prod_changed)
 
-        # Performance combo (disabled until production chosen)
         perf_f = tk.Frame(sel_row, bg=BG_PANEL)
         perf_f.pack(side="left", fill="x", expand=True)
         tk.Label(perf_f, text="Available Schedule", bg=BG_PANEL, fg=TEXT_DARK,
@@ -240,7 +305,7 @@ class SalesTab(tk.Tk):
         self.perf_combo.pack(fill="x")
         self.perf_combo.bind("<<ComboboxSelected>>", self._on_perf_changed)
 
-        # ── Stage direction header (unchanged) ────────────────────────────────
+        # stage header
         stage = tk.Frame(lp, bg=BG_STAGE, height=30)
         stage.pack(fill="x", padx=16, pady=(4, 10))
         stage.pack_propagate(False)
@@ -248,12 +313,12 @@ class SalesTab(tk.Tk):
                  bg=BG_STAGE, fg=TEXT_DARK,
                  font=(FONT, 10, "bold")).place(relx=0.5, rely=0.5, anchor="center")
 
-        # ── COMPONENT B: 30-seat matrix ───────────────────────────────────────
+        # seat matrix
         self.matrix_wrapper = tk.Frame(lp, bg=BG_PANEL)
         self.matrix_wrapper.pack(fill="both", expand=True, padx=16)
         self._render_empty_matrix()
 
-        # Legend (unchanged)
+        # legend
         leg = tk.Frame(lp, bg=BG_PANEL)
         leg.pack(fill="x", padx=16, pady=12)
         for color, lbl in [(SEAT_AVAIL,"Available"),(SEAT_SOLD,"Sold / Reserved"),(SEAT_SEL,"Selected")]:
@@ -263,7 +328,7 @@ class SalesTab(tk.Tk):
             tk.Label(leg, text=lbl, bg=BG_PANEL, fg=TEXT_DARK,
                      font=(FONT,9)).pack(side="left", padx=(0,10))
 
-        # ── COMPONENT C: seat view preview ────────────────────────────────────
+        # seat view preview
         cam_lf = tk.LabelFrame(lp, text="Seat View Preview",
                                bg=BG_PANEL, fg=TEXT_MID, font=(FONT,9,"italic"))
         cam_lf.pack(fill="x", padx=16, pady=(0,14))
@@ -276,77 +341,208 @@ class SalesTab(tk.Tk):
             text="[ Select an available seat to preview the stage view ]",
             fill=TEXT_MID, font=(FONT,10,"italic"))
 
-    # ── right panel: receipt + checkout ───────────────────────────────────────
+    # ── right panel ───────────────────────────────────────────────────────────
     def _build_right(self, parent):
-        rp = tk.Frame(parent, bg=BG_RECEIPT, width=340)
-        rp.pack(side="right", fill="y")
-        rp.pack_propagate(False)
+        self.rp = tk.Frame(parent, bg=BG_RECEIPT, width=340)
+        self.rp.pack(side="right", fill="y")
+        self.rp.pack_propagate(False)
+        self._build_form_panel()
 
-        tk.Label(rp, text="TICKET RECEIPT", bg=BG_RECEIPT, fg=TEXT_DARK,
+    def _build_form_panel(self):
+        """Default right panel: ticket summary + customer form + confirm button."""
+        self._clear_right_panel()
+        self._receipt_mode = "form"
+
+        # ── TICKET RECEIPT header ──────────────────────────────────────────────
+        tk.Label(self.rp, text="TICKET RECEIPT", bg=BG_RECEIPT, fg=TEXT_DARK,
                  font=(FONT,11,"bold")).pack(pady=(14,4))
-        tk.Frame(rp, height=2, bg=ACCENT).pack(fill="x", padx=20)
+        tk.Frame(self.rp, height=2, bg=ACCENT).pack(fill="x", padx=20)
 
-        # Dynamic receipt labels
+        # summary vars
         self.bill_prod  = tk.StringVar(value="Show: —")
         self.bill_perf  = tk.StringVar(value="Schedule: —")
         self.bill_seat  = tk.StringVar(value="Seat: None selected")
         self.bill_price = tk.StringVar(value="Price: Php 0.00")
 
         for var in (self.bill_prod, self.bill_perf, self.bill_seat):
-            tk.Label(rp, textvariable=var, bg=BG_RECEIPT, fg=TEXT_DARK,
+            tk.Label(self.rp, textvariable=var, bg=BG_RECEIPT, fg=TEXT_DARK,
                      font=(FONT,10), anchor="w").pack(fill="x", padx=20, pady=4)
-
-        tk.Label(rp, textvariable=self.bill_price, bg=BG_RECEIPT, fg=ACCENT,
+        tk.Label(self.rp, textvariable=self.bill_price, bg=BG_RECEIPT, fg=ACCENT,
                  font=(FONT,11,"bold"), anchor="w").pack(fill="x", padx=20, pady=4)
 
-        tk.Frame(rp, height=1, bg="#DDDDDD").pack(fill="x", padx=20, pady=8)
+        tk.Frame(self.rp, height=1, bg="#DDDDDD").pack(fill="x", padx=20, pady=8)
 
-        # ── Customer input fields ──────────────────────────────────────────────
-        inp = tk.LabelFrame(rp, text="Customer Details",
-                            bg=BG_RECEIPT, font=(FONT,9,"bold"))
-        inp.pack(fill="x", padx=16, pady=(0,10))
+        # ── customer fields (only for commissioned staff) ──────────────────────
+        if self.session.can_transact:
+            inp = tk.LabelFrame(self.rp, text="Customer Details",
+                                bg=BG_RECEIPT, font=(FONT,9,"bold"))
+            inp.pack(fill="x", padx=16, pady=(0,10))
 
-        for label, attr in [("Full Name","ent_name"),
-                             ("Email Address","ent_email"),
-                             ("Mobile Number (11 digits)","ent_phone")]:
-            tk.Label(inp, text=label, bg=BG_RECEIPT,
-                     font=(FONT,9)).pack(anchor="w", padx=10, pady=(6,0))
-            e = tk.Entry(inp, font=(FONT,10), relief="solid", bd=1)
-            e.pack(fill="x", padx=10, pady=(2,0))
-            setattr(self, attr, e)
+            for label, attr in [("Full Name","ent_name"),
+                                 ("Email Address","ent_email"),
+                                 ("Mobile Number (11 digits)","ent_phone")]:
+                tk.Label(inp, text=label, bg=BG_RECEIPT,
+                         font=(FONT,9)).pack(anchor="w", padx=10, pady=(6,0))
+                e = tk.Entry(inp, font=(FONT,10), relief="solid", bd=1)
+                e.pack(fill="x", padx=10, pady=(2,0))
+                setattr(self, attr, e)
 
-        tk.Frame(inp, height=8, bg=BG_RECEIPT).pack()
+            tk.Frame(inp, height=8, bg=BG_RECEIPT).pack()
 
-        # Transaction type selector
-        tx_row = tk.Frame(rp, bg=BG_RECEIPT)
-        tx_row.pack(fill="x", padx=16, pady=(0,6))
-        tk.Label(tx_row, text="Transaction Type:", bg=BG_RECEIPT,
-                 fg=TEXT_DARK, font=(FONT,9)).pack(side="left")
-        self.tx_type = ttk.Combobox(tx_row, values=["purchased","reserved"],
-                                    state="readonly", font=(FONT,9), width=12)
-        self.tx_type.set("purchased")
-        self.tx_type.pack(side="left", padx=(8,0))
+            # transaction type
+            tx_row = tk.Frame(self.rp, bg=BG_RECEIPT)
+            tx_row.pack(fill="x", padx=16, pady=(0,6))
+            tk.Label(tx_row, text="Transaction Type:", bg=BG_RECEIPT,
+                     fg=TEXT_DARK, font=(FONT,9)).pack(side="left")
+            self.tx_type = ttk.Combobox(tx_row, values=["purchased","reserved"],
+                                        state="readonly", font=(FONT,9), width=12)
+            self.tx_type.set("purchased")
+            self.tx_type.pack(side="left", padx=(8,0))
 
-        # Confirm button
-        self.btn_checkout = ModernButton(
-            rp, text="CONFIRM & ISSUE TICKET",
-            command=self._handle_checkout,
-            width=260, height=40, radius=8,
-            bg=ACCENT, hbg=ACCENT_HOVER
-        )
-        self.btn_checkout.pack(pady=10)
+            # confirm button
+            self.btn_checkout = ModernButton(
+                self.rp, text="CONFIRM & ISSUE TICKET",
+                command=self._handle_checkout,
+                width=260, height=40, radius=8,
+                bg=ACCENT, hbg=ACCENT_HOVER
+            )
+            self.btn_checkout.pack(pady=10)
 
-        # Status label (shows last result message)
-        self.status_lbl = tk.Label(rp, text="", bg=BG_RECEIPT, fg=TEXT_MID,
-                                   font=(FONT,8), wraplength=280, justify="left")
-        self.status_lbl.pack(padx=16, pady=(0,8))
+            self.status_lbl = tk.Label(self.rp, text="", bg=BG_RECEIPT, fg=TEXT_MID,
+                                       font=(FONT,8), wraplength=280, justify="left")
+            self.status_lbl.pack(padx=16, pady=(0,8))
+
+    def _show_manager_notice(self):
+        """Replaces the right panel form with a manager view-only notice."""
+        self._clear_right_panel()
+        tk.Label(self.rp, text="TICKET RECEIPT", bg=BG_RECEIPT, fg=TEXT_DARK,
+                 font=(FONT,11,"bold")).pack(pady=(14,4))
+        tk.Frame(self.rp, height=2, bg=ACCENT).pack(fill="x", padx=20)
+
+        notice = tk.Frame(self.rp, bg="#FFF8E1", padx=12, pady=12)
+        notice.pack(fill="x", padx=20, pady=20)
+        tk.Label(notice,
+                 text="👁  Manager View",
+                 bg="#FFF8E1", fg="#7B5800",
+                 font=(FONT,10,"bold")).pack(anchor="w")
+        tk.Label(notice,
+                 text="You are logged in as a manager.\n\n"
+                      "Only commissioned sales agents\n"
+                      "can issue or reserve tickets.\n\n"
+                      "You may view the seat map and\n"
+                      "check availability, but cannot\n"
+                      "complete a transaction.",
+                 bg="#FFF8E1", fg="#5C4000",
+                 font=(FONT,9), justify="left").pack(anchor="w", pady=(6,0))
+
+    def _show_issued_receipt(self, ticket_number, seat_name, prod_title,
+                             perf_label, customer_name, customer_email,
+                             customer_phone, amount, tx_type, tx_id):
+        """
+        Replaces the right panel with a formatted receipt after a successful sale.
+        No popup — everything shows inline on the right panel.
+        Matches the receipt layout in the project reference image.
+        """
+        self._clear_right_panel()
+        self._receipt_mode = "issued"
+
+        # ── header ────────────────────────────────────────────────────────────
+        tk.Label(self.rp, text="My Metropolitan Theater",
+                 bg=BG_RECEIPT, fg=TEXT_DARK,
+                 font=(FONT, 11, "bold")).pack(pady=(14,0))
+        tk.Label(self.rp, text="OFFICIAL RECEIPT",
+                 bg=BG_RECEIPT, fg=TEXT_MID,
+                 font=(FONT, 8)).pack()
+
+        tk.Frame(self.rp, height=1, bg="#DDDDDD").pack(fill="x", padx=20, pady=6)
+
+        # transaction meta
+        tx_label = f"#TXN-{str(tx_id).zfill(4)}" if tx_id else "—"
+        for text in [
+            f"Transaction ID: {tx_label}",
+            f"Date: {date.today().strftime('%B %d, %Y')}",
+            f"Staff: {self.session.staff_name} (ID: ST-{str(self.session.staff_id).zfill(3)})",
+        ]:
+            tk.Label(self.rp, text=text, bg=BG_RECEIPT, fg=TEXT_DARK,
+                     font=(FONT,9), anchor="center").pack()
+
+        self._receipt_divider("CUSTOMER DETAILS")
+
+        for text in [
+            f"Name: {customer_name}",
+            f"Email: {customer_email}",
+            f"Mobile: {customer_phone}",
+        ]:
+            tk.Label(self.rp, text=text, bg=BG_RECEIPT, fg=TEXT_DARK,
+                     font=(FONT,9), anchor="center").pack(pady=1)
+
+        self._receipt_divider("TICKET INFORMATION")
+
+        status_text = "Paid" if tx_type == "purchased" else "Reserved"
+        for text in [
+            f"Ticket No: {ticket_number}",
+            f"Production: {prod_title}",
+            f"Performance: {perf_label}",
+            f"Seat: {seat_name}",
+            f"Status: {status_text}",
+        ]:
+            tk.Label(self.rp, text=text, bg=BG_RECEIPT, fg=TEXT_DARK,
+                     font=(FONT,9), anchor="center").pack(pady=1)
+
+        self._receipt_divider("PAYMENT SUMMARY")
+
+        tk.Label(self.rp, text="Payment Method: Cash",
+                 bg=BG_RECEIPT, fg=TEXT_DARK,
+                 font=(FONT,9), anchor="center").pack(pady=1)
+        tk.Label(self.rp,
+                 text=f"Total Amount:  ₱{amount:,.2f}",
+                 bg=BG_RECEIPT, fg=ACCENT,
+                 font=(FONT,11,"bold"), anchor="center").pack(pady=(4,2))
+
+        tk.Frame(self.rp, height=1, bg="#DDDDDD").pack(fill="x", padx=20, pady=10)
+
+        # ── New Transaction button ─────────────────────────────────────────────
+        ModernButton(
+            self.rp, text="NEW TRANSACTION",
+            command=self._new_transaction,
+            width=260, height=38, radius=8,
+            bg="#2E7D32", hbg="#1B5E20"
+        ).pack(pady=(0,6))
+
+        # small print
+        tk.Label(self.rp,
+                 text=f"Commission recorded for {self.session.staff_name}",
+                 bg=BG_RECEIPT, fg="#888888",
+                 font=(FONT, 7, "italic")).pack(pady=(0,10))
+
+    def _receipt_divider(self, title):
+        """Draws a labelled divider line inside the receipt panel."""
+        fr = tk.Frame(self.rp, bg=BG_RECEIPT)
+        fr.pack(fill="x", padx=20, pady=(10,4))
+        tk.Frame(fr, height=1, bg="#CCCCCC").pack(fill="x")
+        tk.Label(fr, text=title, bg=BG_RECEIPT, fg=TEXT_MID,
+                 font=(FONT, 8, "bold")).pack(pady=2)
+        tk.Frame(fr, height=1, bg="#CCCCCC").pack(fill="x")
+
+    def _clear_right_panel(self):
+        for w in self.rp.winfo_children():
+            w.destroy()
+
+    def _new_transaction(self):
+        """Reset everything for a fresh ticket sale."""
+        self._build_form_panel()
+        # restore selection state display vars (re-bound after rebuild)
+        self.bill_prod.set(f"Show: {self.sel_prod_title}" if self.sel_prod_title else "Show: —")
+        self.bill_perf.set(f"Schedule: {self.sel_perf_label}" if self.sel_perf_label else "Schedule: —")
+        self.bill_seat.set("Seat: None selected")
+        self.bill_price.set("Price: Php 0.00")
+        self._reset_seat_selection_only()
 
     # ═══════════════════════════════════════════════════════════════════════════
-    #  DATA LOADING & EVENT HANDLERS
+    #  DATA LOADING
     # ═══════════════════════════════════════════════════════════════════════════
 
     def _load_productions(self):
-        """Populate production combo from ProductionService.viewAllProductions()"""
         try:
             res = self.db.service.production.viewAllProductions()
             if not res or isinstance(res, str):
@@ -367,7 +563,6 @@ class SalesTab(tk.Tk):
             self.prod_combo["values"] = ["Error loading productions"]
 
     def _on_prod_changed(self, _=None):
-        """When a production is picked, load its performances."""
         title = self.prod_combo.get()
         pid   = self.prod_map.get(title)
         if not pid:
@@ -375,9 +570,11 @@ class SalesTab(tk.Tk):
 
         self.sel_prod_id    = pid
         self.sel_prod_title = title
-        self.bill_prod.set(f"Show: {title}")
 
-        # reset downstream state
+        # update form panel if it's visible
+        if self._receipt_mode == "form" and hasattr(self, "bill_prod"):
+            self.bill_prod.set(f"Show: {title}")
+
         self._reset_seat_state()
         self._render_empty_matrix()
         self.perf_combo.set("Loading schedules…")
@@ -393,17 +590,17 @@ class SalesTab(tk.Tk):
             entries = []
             for s in schedules:
                 if isinstance(s, dict):
-                    perf_id    = s["performance_id"]
-                    perf_date  = fmt_short_date(s.get("date"))
-                    perf_start = fmt_time(s.get("start_time"))
-                    perf_end   = fmt_time(s.get("end_time"))
+                    perf_id   = s["performance_id"]
+                    perf_date = fmt_short_date(s.get("date"))
+                    p_start   = fmt_time(s.get("start_time"))
+                    p_end     = fmt_time(s.get("end_time"))
                 else:
-                    perf_id    = s[0]
-                    perf_date  = fmt_short_date(s[4])
-                    perf_start = fmt_time(s[2])
-                    perf_end   = fmt_time(s[3])
+                    perf_id   = s[0]
+                    perf_date = fmt_short_date(s[4])
+                    p_start   = fmt_time(s[2])
+                    p_end     = fmt_time(s[3])
 
-                lbl = f"{perf_date}  {perf_start} – {perf_end}"
+                lbl = f"{perf_date}  {p_start} – {p_end}"
                 self.perf_map[lbl] = s if isinstance(s, dict) else {
                     "performance_id": s[0], "start_time": s[2],
                     "end_time": s[3], "date": s[4], "total_seats": s[5]
@@ -419,15 +616,18 @@ class SalesTab(tk.Tk):
             self.perf_combo.set("Error loading schedules")
 
     def _on_perf_changed(self, _=None):
-        """When a performance is picked, build the 30-seat grid."""
         lbl  = self.perf_combo.get()
         perf = self.perf_map.get(lbl)
         if not perf:
             return
 
         perf_id = perf["performance_id"] if isinstance(perf, dict) else perf[0]
-        self.sel_perf_id = perf_id
-        self.bill_perf.set(f"Schedule: {lbl}")
+        self.sel_perf_id    = perf_id
+        self.sel_perf_label = lbl
+
+        if self._receipt_mode == "form" and hasattr(self, "bill_perf"):
+            self.bill_perf.set(f"Schedule: {lbl}")
+
         self._reset_seat_state()
         self._build_seat_grid(perf_id)
 
@@ -444,11 +644,6 @@ class SalesTab(tk.Tk):
                  font=(FONT, 10, "italic")).pack(expand=True, pady=40)
 
     def _build_seat_grid(self, perf_id):
-        """
-        Calls PerformanceSeatService.viewAllSeatsByPerformance(perf_id).
-        Renders exactly up to 30 seat buttons in a 6-column grid.
-        Green = available (clickable), Red = sold/reserved (disabled).
-        """
         for w in self.matrix_wrapper.winfo_children():
             w.destroy()
         self.active_btns.clear()
@@ -478,7 +673,6 @@ class SalesTab(tk.Tk):
                     view_path = s.get("seat_view", "")
                     price     = float(s.get("price", 0))
                 else:
-                    # tuple fallback: performance_seat_id, seat_number, seat_view, price, is_available
                     ps_id     = s[0]
                     seat_num  = s[3] if len(s) > 3 else f"S{idx+1}"
                     is_avail  = str(s[6]).strip().lower() in ("true","1","t") if len(s) > 6 else False
@@ -494,7 +688,9 @@ class SalesTab(tk.Tk):
                 }
 
                 base_color = SEAT_AVAIL if is_avail else SEAT_SOLD
-                btn_state  = "normal"   if is_avail else "disabled"
+                # managers see seats but cannot click to select for purchase
+                can_click  = is_avail and self.session.can_transact
+                btn_state  = "normal" if can_click else "disabled"
 
                 btn = tk.Button(
                     grid,
@@ -510,7 +706,7 @@ class SalesTab(tk.Tk):
                 )
                 btn.grid(row=r_idx, column=c_idx, padx=5, pady=5)
 
-                if is_avail:
+                if can_click:
                     btn.config(command=lambda sid=ps_id, b=btn: self._on_seat_click(sid, b))
 
                 self.active_btns[ps_id] = (btn, base_color)
@@ -521,14 +717,7 @@ class SalesTab(tk.Tk):
             print(f"[SalesTab] build_seat_grid error: {ex}")
 
     def _on_seat_click(self, ps_id, clicked_btn):
-        """
-        Handles seat selection:
-        - Restores previous selection colour
-        - Marks new selection yellow
-        - Updates receipt summary with price from seat_map
-        - Updates seat view preview label
-        """
-        # restore previous
+        # restore previous selection
         if self.sel_ps_id and self.sel_ps_id in self.active_btns:
             old_btn, old_color = self.active_btns[self.sel_ps_id]
             old_btn.config(bg=old_color)
@@ -537,15 +726,14 @@ class SalesTab(tk.Tk):
         clicked_btn.config(bg=SEAT_SEL)
 
         seat = self.seat_map.get(ps_id, {})
-        self.sel_seat_name  = seat.get("seat_number",  "—")
-        self.sel_seat_price = seat.get("price",        0.0)
-        self.sel_seat_view  = seat.get("seat_view",    "")
+        self.sel_seat_name  = seat.get("seat_number", "—")
+        self.sel_seat_price = seat.get("price",       0.0)
+        self.sel_seat_view  = seat.get("seat_view",   "")
 
-        # update receipt
-        self.bill_seat.set(f"Seat: {self.sel_seat_name}")
-        self.bill_price.set(f"Price:  Php {self.sel_seat_price:,.2f}")
+        if self._receipt_mode == "form" and hasattr(self, "bill_seat"):
+            self.bill_seat.set(f"Seat: {self.sel_seat_name}")
+            self.bill_price.set(f"Price:  Php {self.sel_seat_price:,.2f}")
 
-        # update seat view preview
         preview_text = (
             f"View from seat {self.sel_seat_name}  →  {self.sel_seat_view}"
             if self.sel_seat_view
@@ -559,20 +747,26 @@ class SalesTab(tk.Tk):
 
     def _handle_checkout(self):
         """
-        1. Validate inputs
-        2. getOrCreateCustomer  → customer_id
-        3. purchaseTicket()     → ticket_number
-        4. createTransaction()  → transaction record
-        5. Mark seat red, reset form
+        Full purchase flow:
+          1. Validate seat + performance + customer fields
+          2. getOrCreateCustomer
+          3. purchaseTicket  → creates Ticket + marks seat FALSE
+          4. createTransaction → records staff_id + amount (commission source)
+          5. Show inline receipt on right panel (no popup)
         """
-        # ── guard: seat selected ───────────────────────────────────────────────
+        # ── access guard ──────────────────────────────────────────────────────
+        if not self.session.can_transact:
+            messagebox.showwarning("Access Denied",
+                                   "Only commissioned sales agents can issue tickets.",
+                                   parent=self)
+            return
+
         if not self.sel_ps_id:
             messagebox.showwarning("No Seat",
                                    "Please select a seat from the theater map first.",
                                    parent=self)
             return
 
-        # ── guard: performance selected ────────────────────────────────────────
         if not self.sel_perf_id:
             messagebox.showwarning("No Schedule",
                                    "Please select a performance schedule first.",
@@ -616,15 +810,13 @@ class SalesTab(tk.Tk):
                 customerId        = customer_id,
                 status            = "sold" if tx_type == "purchased" else "reserved",
                 saleDate          = date.today(),
-                ticketNumber      = None,   # auto-generated inside service
+                ticketNumber      = None,
             )
         except Exception as ex:
-            # catch duplicate seat assignment or any backend error
             messagebox.showerror("Ticket Error",
                                  f"Could not issue ticket:\n{ex}", parent=self)
             return
 
-        # seat duplication / validation error
         if isinstance(ticket_result, str):
             if "already has an existing ticket" in ticket_result.lower():
                 messagebox.showwarning(
@@ -639,76 +831,89 @@ class SalesTab(tk.Tk):
 
         ticket_number = ticket_result.get("ticket_number", "—")
 
-        # ── step 3: create transaction ────────────────────────────────────────
-        # find the ticket_id we just created so we can link the transaction
+        # ── step 3: create transaction (commission is auto-recorded here) ──────
+        tx_id = None
         try:
             ticket_lookup = self.db.service.ticket.locateTicketByNumber(ticket_number)
             ticket_id = ticket_lookup["ticket_id"] if isinstance(ticket_lookup, dict) else None
 
             if ticket_id:
-                # use the first commissioned staff as the processing agent
-                # in a real login-aware system this would be the logged-in staff_id
                 tx = Transaction(
                     ticketId        = ticket_id,
-                    staffId         = 23,           # first commissioned staff
+                    staffId         = self.session.staff_id,   # ← logged-in staff
                     transactionDate = date.today().strftime("%Y-%m-%d"),
                     type            = tx_type,
                     amount          = self.sel_seat_price,
                 )
                 tx_result = self.db.service.transaction.createTransaction(tx)
+
+                # try to get the new transaction_id for the receipt
+                try:
+                    all_tx = self.db.service.transaction.locateTransactionsByTicket(ticket_id)
+                    if all_tx and isinstance(all_tx, list):
+                        tx_id = all_tx[-1].get("transaction_id")
+                except Exception:
+                    pass
+
                 if isinstance(tx_result, str) and tx_result != "Successfully created transaction.":
                     print(f"[SalesTab] transaction warning: {tx_result}")
 
         except Exception as ex:
             print(f"[SalesTab] transaction logging error (non-critical): {ex}")
 
-        # ── step 4: update UI ─────────────────────────────────────────────────
-        # mark seat red in grid
+        # ── step 4: mark seat red in grid ─────────────────────────────────────
         if self.sel_ps_id in self.active_btns:
             btn, _ = self.active_btns[self.sel_ps_id]
-            btn.config(bg=SEAT_SOLD, state="disabled")
+            btn.config(bg=SEAT_SOLD, state="disabled", command=lambda: None)
             self.active_btns[self.sel_ps_id] = (btn, SEAT_SOLD)
-            # remove click command so the button is truly dead
-            btn.config(command=lambda: None)
 
-        messagebox.showinfo(
-            "Ticket Issued ✓",
-            f"Transaction complete!\n\n"
-            f"Ticket No.:  {ticket_number}\n"
-            f"Seat:        {self.sel_seat_name}\n"
-            f"Customer:    {raw_name}\n"
-            f"Amount:      Php {self.sel_seat_price:,.2f}",
-            parent=self
+        # ── step 5: show inline receipt (replaces form, no popup) ─────────────
+        self._show_issued_receipt(
+            ticket_number  = ticket_number,
+            seat_name      = self.sel_seat_name,
+            prod_title     = self.sel_prod_title or "—",
+            perf_label     = self.sel_perf_label or "—",
+            customer_name  = raw_name,
+            customer_email = raw_email,
+            customer_phone = raw_phone,
+            amount         = self.sel_seat_price,
+            tx_type        = tx_type,
+            tx_id          = tx_id,
         )
 
-        self._clear_form()
-        self.status_lbl.config(
-            text=f"Last issued: {ticket_number}  |  {raw_name}",
-            fg="#228B22"
-        )
+        # reset seat selection so the grid stays interactive for next ticket
+        self._reset_seat_selection_only()
 
-    # ── form reset ────────────────────────────────────────────────────────────
-    def _clear_form(self):
-        self.ent_name.delete(0, tk.END)
-        self.ent_email.delete(0, tk.END)
-        self.ent_phone.delete(0, tk.END)
-        self.tx_type.set("purchased")
-        self._reset_seat_state()
-
-    def _reset_seat_state(self):
+    # ── resets ────────────────────────────────────────────────────────────────
+    def _reset_seat_selection_only(self):
+        """Clears only the selected seat highlight — keeps production/perf choice."""
         self.sel_ps_id      = None
         self.sel_seat_name  = None
         self.sel_seat_price = 0.0
         self.sel_seat_view  = ""
-        self.bill_seat.set("Seat: None selected")
-        self.bill_price.set("Price: Php 0.00")
         self.cam_canvas.itemconfig(
             self.cam_txt,
             text="[ Select an available seat to preview the stage view ]"
         )
 
+    def _reset_seat_state(self):
+        """Full reset including receipt vars."""
+        self._reset_seat_selection_only()
+        if self._receipt_mode == "form":
+            if hasattr(self, "bill_seat"):
+                self.bill_seat.set("Seat: None selected")
+            if hasattr(self, "bill_price"):
+                self.bill_price.set("Price: Php 0.00")
+
 
 # ── entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app = SalesTab()
+    # Default: logged in as commissioned staff (sales agent)
+    # Replace with your real login session before launching
+    session = AppSession(
+        staff_id   = 23,
+        staff_name = "Marius Aquino",
+        staff_type = "Commissioned"   # change to "Full_Time" to test manager view
+    )
+    app = SalesTab(session=session)
     app.mainloop()

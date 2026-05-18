@@ -9,17 +9,30 @@ import psycopg2
 DB_CONFIG = {
     "host":     "127.0.0.1",
     "port":     5432,
-    "dbname":   "MyMetropolitanTheaterDatabase",   # change to your actual DB name
+    "dbname":   "MyMetropolitanTheater",   # change to your actual DB name
     "user":     "postgres",                # change to your DB user
-    "password":  "AKOSICYAN69",            # change to your DB password
+    "password":  "ortiz1004",            # change to your DB password
 }
 
 def get_connection():
     return psycopg2.connect(**DB_CONFIG)
 
+backend_error = None
+try:
+    from backend.start_database import start_database
+    from backend.objects.work_log_obj import WorkLog
+    db_instance = start_database()
+    if db_instance is False:
+        backend_error = "Database Connection Error: Could not connect to PostgreSQL. Check if the service is running."
+        db_instance = None
+except ImportError as e:
+    start_database = None
+    db_instance = None
+    backend_error = f"Import Error: {e}"
+
 # ── DB helpers: Personnel ─────────────────────────────────────────────────────
 def db_load_departments():
-    """Returns list of (department_id, name) from DB."""
+    """Returns list of (department_id, name) tuples from DB."""
     try:
         conn = get_connection()
         cur  = conn.cursor()
@@ -37,9 +50,26 @@ def db_load_staff_by_department(department_id):
         conn = get_connection()
         cur  = conn.cursor()
         cur.execute("""
-            SELECT s.staff_id, s.name, s.type, d.name AS dept_name
+            SELECT s.staff_id, s.name, s.type, d.name AS dept_name,
+                   CASE
+                       WHEN s.type = 'Hourly' THEN COALESCE(w.total_hours, 0) * h.hourly_rate
+                       WHEN s.type = 'Monthly' THEN ft.monthly_salary
+                       WHEN s.type = 'Commissioned' THEN COALESCE(t.total_sales, 0) * c.commission_rate
+                   END AS earnings,
+                   ft.monthly_salary, h.hourly_rate, h.famous_level
             FROM   Staff s
             JOIN   Department d ON d.department_id = s.department_id
+             LEFT JOIN Full_Time ft ON s.staff_id = ft.staff_id
+            LEFT JOIN Hourly h ON s.staff_id = h.staff_id
+            LEFT JOIN Commissioned c ON s.staff_id = c.staff_id
+            LEFT JOIN (
+                SELECT staff_id, SUM(hours_worked) AS total_hours
+                FROM Work_Log GROUP BY staff_id
+            ) w ON s.staff_id = w.staff_id
+            LEFT JOIN (
+                SELECT staff_id, SUM(amount) AS total_sales
+                FROM Transactions WHERE type = 'purchased' GROUP BY staff_id
+            ) t ON s.staff_id = t.staff_id
             WHERE  s.department_id = %s
             ORDER  BY s.name;
         """, (department_id,))
@@ -47,7 +77,9 @@ def db_load_staff_by_department(department_id):
         cur.close(); conn.close()
         return [
             {"id": f"STAFF-{r[0]:02d}", "name": r[1],
-             "role": r[2], "dept": r[3], "staff_id": r[0]}
+             "role": r[2], "dept": r[3], "staff_id": r[0],
+             "earnings": r[4], "monthly_salary": r[5], 
+             "hourly_rate": r[6], "famous_level": r[7]}
             for r in rows
         ]
     except Exception as e:
@@ -107,6 +139,23 @@ def db_save_department_change(staff_id, new_dept_id):
         messagebox.showinfo("Saved", "Department updated successfully.")
     except Exception as e:
         messagebox.showerror("DB Error", f"Could not save changes:\n{e}")
+
+def db_load_performances_list():
+    """Returns list of performances for selection."""
+    try:
+        conn = get_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            SELECT p.performance_id, prod.title, p.date, p.start_time 
+            FROM Performance p 
+            JOIN Production prod ON p.production_id = prod.production_id
+            ORDER BY p.date DESC;
+        """)
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        return []
 
 # ── DB helpers: Customers ─────────────────────────────────────────────────────
 def db_load_customers():
@@ -230,6 +279,72 @@ def make_canvas_btn(parent, text, command, w=80, h=32,
     c.bind("<Button-1>", lambda _: command())
     c.config(cursor="hand2")
     return c
+
+def make_rounded_entry(parent, width_px=180, bg_parent=BG_PANEL):
+    H     = 36
+    PAD_X = RADIUS + 10
+    canvas = tk.Canvas(parent, width=width_px, height=H,
+                       bg=bg_parent, highlightthickness=0, bd=0)
+    def draw(color):
+        canvas.delete("bg")
+        rounded_rect(canvas, 0, 0, width_px, H, RADIUS,
+                     fill=color, outline=color, tags="bg")
+        canvas.tag_lower("bg")
+    draw(BG_INPUT)
+    entry = tk.Entry(canvas, font=(FONT, 10), bg=BG_INPUT, fg=TEXT_DARK,
+                     relief="flat", bd=0, insertbackground=TEXT_DARK,
+                     highlightthickness=0)
+    canvas.create_window(PAD_X, H // 2, anchor="w",
+                         window=entry, width=width_px - PAD_X * 2)
+    def on_enter(_): draw(BG_INPUT_HOV); entry.config(bg=BG_INPUT_HOV)
+    def on_leave(_): draw(BG_INPUT);     entry.config(bg=BG_INPUT)
+    canvas.bind("<Enter>", on_enter); canvas.bind("<Leave>", on_leave)
+    entry.bind("<Enter>",  on_enter); entry.bind("<Leave>",  on_leave)
+    return canvas, entry
+
+def open_create_work_log_dialog(root_win, staff_id, refresh_callback):
+    if not db_instance:
+        messagebox.showerror("Error", f"Database not initialized.\n\n{backend_error}")
+        return
+
+    dlg = tk.Toplevel(root_win)
+    dlg.title("Create Work Log")
+    dlg.configure(bg=BG_PANEL)
+    dlg.grab_set()
+    center_on(dlg, root_win, 400, 300)
+
+    tk.Label(dlg, text="Select Performance", bg=BG_PANEL, fg=TEXT_DARK,
+             font=(FONT, 12, "bold")).pack(pady=(20, 10))
+
+    perfs = db_load_performances_list()
+    if not perfs:
+        tk.Label(dlg, text="No performances found.", bg=BG_PANEL, fg=ACCENT).pack()
+        return
+
+    perf_map     = {f"{r[1]} ({r[2]} @ {r[3]})": r[0] for r in perfs}
+    perf_options = list(perf_map.keys())
+    perf_var     = tk.StringVar()
+    combo = ttk.Combobox(dlg, textvariable=perf_var, values=perf_options,
+                         state="readonly", width=40)
+    combo.pack(pady=10, padx=20)
+
+    def submit():
+        selected = perf_var.get()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select a performance.")
+            return
+        perf_id = perf_map[selected]
+        from backend.objects.work_log_obj import WorkLog
+        new_log = WorkLog(staff_id=staff_id, performance_id=perf_id)
+        result  = db_instance.service.work_log.create_work_log(new_log)
+        if "successfully" in result.lower():
+            messagebox.showinfo("Success", result)
+            dlg.destroy()
+            refresh_callback()
+        else:
+            messagebox.showerror("Error", result)
+
+    make_canvas_btn(dlg, "Confirm Log", submit, w=140, h=35, bg=BG_PANEL).pack(pady=20)
 
 def center_on(win, parent, w, h):
     parent.update_idletasks()
@@ -655,6 +770,11 @@ def build_personnel_tab(parent):
         tk.Label(name_col, text=emp["role"], fg=TEXT_MID,  bg=BG_PANEL,
                  font=(FONT, 11), anchor="w").pack(anchor="w")
 
+        # Display current calculated earnings
+        earnings = f"₱{float(emp['earnings']):,.2f}" if emp.get("earnings") else "₱0.00"
+        tk.Label(name_col, text=f"Current Earnings: {earnings}", fg=ACCENT, bg=BG_PANEL,
+                 font=(FONT, 10, "bold"), anchor="w").pack(anchor="w", pady=(4, 0))
+
         # Department dropdown — loaded from DB
         dept_col = tk.Frame(top_row, bg=BG_PANEL)
         dept_col.pack(side="right")
@@ -701,16 +821,37 @@ def build_personnel_tab(parent):
         tk.Frame(card2, bg=DIVIDER, height=1).pack(fill="x", padx=20)
         pay_row = tk.Frame(card2, bg=BG_PANEL)
         pay_row.pack(fill="x", padx=20, pady=(14, 16))
-        pt_col = tk.Frame(pay_row, bg=BG_PANEL)
-        pt_col.pack(side="left", padx=(0, 30))
-        tk.Label(pt_col, text="Pay Type", fg=TEXT_DARK, bg=BG_PANEL,
+        
+        # Monthly Salary
+        ms_col = tk.Frame(pay_row, bg=BG_PANEL)
+        ms_col.pack(side="left", padx=(0, 30))
+        tk.Label(ms_col, text="Monthly Salary", fg=TEXT_DARK, bg=BG_PANEL,
                  font=(FONT, 10, "bold")).pack(anchor="w")
-        pay_var   = tk.StringVar(value=emp.get("role", "Select"))
-        pay_combo = ttk.Combobox(pt_col, textvariable=pay_var,
-                                 values=["Full_Time", "Hourly", "Commissioned"],
-                                 state="readonly", font=(FONT, 10), width=14)
-        pay_combo.set(emp.get("role", "Select"))
-        pay_combo.pack(anchor="w", pady=(6, 0))
+        
+        ms_canvas, ms_entry = make_rounded_entry(ms_col, width_px=160, bg_parent=BG_PANEL)
+        ms_canvas.pack(pady=(6, 0))
+        if emp.get("monthly_salary"):
+            ms_entry.insert(0, str(emp["monthly_salary"]))
+
+        # Hourly Rate
+        hr_col = tk.Frame(pay_row, bg=BG_PANEL)
+        hr_col.pack(side="left", padx=(0, 30))
+        tk.Label(hr_col, text="Hourly Rate", fg=TEXT_DARK, bg=BG_PANEL,
+                 font=(FONT, 10, "bold")).pack(anchor="w")
+        hr_canvas, hr_entry = make_rounded_entry(hr_col, width_px=160, bg_parent=BG_PANEL)
+        hr_canvas.pack(pady=(6, 0))
+        if emp.get("hourly_rate"):
+            hr_entry.insert(0, str(emp["hourly_rate"]))
+
+        # Famous Level
+        fl_col = tk.Frame(pay_row, bg=BG_PANEL)
+        fl_col.pack(side="left")
+        tk.Label(fl_col, text="Famous Level [1-5]", fg=TEXT_DARK, bg=BG_PANEL,
+                 font=(FONT, 10, "bold")).pack(anchor="w")
+        fl_canvas, fl_entry = make_rounded_entry(fl_col, width_px=160, bg_parent=BG_PANEL)
+        fl_canvas.pack(pady=(6, 0))
+        if emp.get("famous_level"):
+            fl_entry.insert(0, str(emp["famous_level"]))
 
         # Card 2b — Entertainment performer roster (shown only for Entertainment dept)
         if emp["dept"] == "Entertainment":
@@ -740,12 +881,24 @@ def build_personnel_tab(parent):
         # Card 3 — Time Tracking from DB
         card3 = tk.Frame(inner, bg=BG_PANEL)
         card3.pack(fill="x", pady=(0, 10))
-        tk.Label(card3, text="Time Tracking", fg=TEXT_DARK, bg=BG_PANEL,
-                 font=(FONT, 13, "bold")).pack(anchor="w", padx=20, pady=(16, 10))
+        
+        hdr = tk.Frame(card3, bg=BG_PANEL)
+        hdr.pack(fill="x", padx=20, pady=(16, 10))
+        tk.Label(hdr, text="Time Tracking", fg=TEXT_DARK, bg=BG_PANEL,
+                 font=(FONT, 13, "bold")).pack(side="left")
+
+        btn_frame = tk.Frame(hdr, bg=BG_PANEL)
+        btn_frame.pack(side="right")
+
+        root_win = parent.winfo_toplevel()
+        make_canvas_btn(btn_frame, "Add New Work Log", 
+                        lambda: open_create_work_log_dialog(root_win, emp["staff_id"], lambda: show_employee(emp)),
+                        w=140, h=30, bg=BG_PANEL).pack(side="left")
+        
         tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)
         th_row = tk.Frame(card3, bg=BG_PANEL)
         th_row.pack(fill="x", padx=20, pady=(6, 2))
-        for col_text, col_w in [("Date", 14), ("Staff ID", 16), ("Hours Worked", 16)]:
+        for col_text, col_w in [("Date", 14), ("Staff ID", 16), ("Hours Worked", 16), ("Salary", 16)]:
             tk.Label(th_row, text=col_text, fg=ACCENT, bg=BG_PANEL,
                      font=(FONT, 10, "bold"), width=col_w, anchor="w").pack(side="left")
         tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)
@@ -755,7 +908,11 @@ def build_personnel_tab(parent):
             row_bg = TEXT_LIGHT if i % 2 == 0 else BG_TABLE_ALT
             rw = tk.Frame(card3, bg=row_bg)
             rw.pack(fill="x", padx=20)
-            for val, cw in [(date, 14), (sid, 16), (hrs, 16)]:
+            salary_val = ""
+            if emp.get("role") == "Monthly" and emp.get("monthly_salary"):
+                salary_val = f"₱{float(emp['monthly_salary']):,.2f}"
+
+            for val, cw in [(date, 14), (sid, 16), (hrs, 16), (salary_val, 16)]:
                 tk.Label(rw, text=val, fg=TEXT_DARK, bg=row_bg,
                          font=(FONT, 10), width=cw, anchor="w").pack(side="left", pady=8)
             tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)

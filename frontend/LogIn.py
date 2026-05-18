@@ -2,11 +2,19 @@ import tkinter as tk
 import tkinter.messagebox
 import sys
 import os
+import psycopg2
 
-#chcheck ko lang kung nakakapush akooooooo
+# ── Database Connection ───────────────────────────────────────────────────────
+DB_CONFIG = {
+    "host":     "127.0.0.1",
+    "port":     5432,
+    "dbname":   "MyMetropolitanTheaterDatabase",
+    "user":     "postgres",
+    "password": "AKOSICYAN69",
+}
 
-# Add backend to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
+def get_connection():
+    return psycopg2.connect(**DB_CONFIG)
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 BG_LIGHT   = "#F0F0F0"
@@ -109,38 +117,66 @@ def center_on_parent(win, parent, w, h):
 
 # ── Login logic ───────────────────────────────────────────────────────────────
 def handle_login():
-    from start_database import start_database
-    from objects.log_in_obj import LogIn
+    # Import Dashboard from same directory
+    dashboard_dir = os.path.dirname(os.path.abspath(__file__))
+    if dashboard_dir not in sys.path:
+        sys.path.insert(0, dashboard_dir)
 
-    # Import Dashboard — adjust path as needed
-    dashboard_path = os.path.join(os.path.dirname(__file__), '..', 'frontend')
-    if dashboard_path not in sys.path:
-        sys.path.append(dashboard_path)
-    # Ensure the filename below matches your actual file (e.g., dashboard_v2.py)
-    # from Dashboard import open_dashboard
+    staff_id_str = username_entry.get().strip()
+    password     = password_entry.get().strip()
 
-    db = start_database()
-    if not db:
-        tkinter.messagebox.showerror("Error", "Cannot connect to database.")
+    # Guard against placeholder text still in fields
+    if staff_id_str in ("", "Staff ID"):
+        tkinter.messagebox.showerror("Error", "Please enter your Staff ID.")
         return
-
-    staff_id_str = username_entry.get()
-    password     = password_entry.get()
+    if password in ("", "Password"):
+        tkinter.messagebox.showerror("Error", "Please enter your password.")
+        return
 
     try:
         staff_id = int(staff_id_str)
     except ValueError:
-        tkinter.messagebox.showerror("Error", "Username must be your Staff ID number.")
+        tkinter.messagebox.showerror("Error", "Staff ID must be a number.")
         return
 
-    result = db.service.log_in.log_in(LogIn(staff_id=staff_id, password=password))
+    # ── Authenticate directly against the DB ──────────────────────────────────
+    try:
+        conn = get_connection()
+        cur  = conn.cursor()
 
-    if isinstance(result, str):
-        tkinter.messagebox.showerror("Login Failed", result)
-    elif isinstance(result, list):
-        role = result[1]
-        root.destroy()              # close login window
-        open_dashboard(role, staff_id)  # open dashboard
+        # Check credentials
+        cur.execute(
+            "SELECT staff_id FROM Log_In WHERE staff_id = %s AND password = %s;",
+            (staff_id, password)
+        )
+        login_row = cur.fetchone()
+
+        if not login_row:
+            cur.close(); conn.close()
+            tkinter.messagebox.showerror("Login Failed", "Invalid Staff ID or password.")
+            return
+
+        # Determine role: check if this staff_id is a department manager
+        cur.execute("SELECT COUNT(*) FROM Department WHERE manager_id = %s;", (staff_id,))
+        is_manager = cur.fetchone()[0] > 0
+
+        cur.close(); conn.close()
+
+        role = "MANAGER" if is_manager else "SALES"
+
+    except Exception as e:
+        tkinter.messagebox.showerror("DB Error", f"Could not connect to database:\n{e}")
+        return
+
+    # ── Open Dashboard ────────────────────────────────────────────────────────
+    try:
+        from Dashboard import open_dashboard
+    except ImportError as e:
+        tkinter.messagebox.showerror("Error", f"Could not load Dashboard:\n{e}")
+        return
+
+    root.destroy()
+    open_dashboard(role, staff_id)
 
 # ── Main window ───────────────────────────────────────────────────────────────
 root = tk.Tk()

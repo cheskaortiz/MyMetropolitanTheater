@@ -3,6 +3,8 @@ import tkinter.messagebox
 import sys
 import os
 
+#chcheck ko lang kung nakakapush ako
+
 # Add backend to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 

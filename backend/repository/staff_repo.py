@@ -50,7 +50,7 @@ class StaffRepo:
 
                     CASE
                         WHEN s.type = 'Hourly' THEN COALESCE(w.total_hours, 0) * h.hourly_rate
-                        WHEN s.type = 'Full Time' THEN ft.monthly_salary
+                        WHEN s.type = 'Monthly' THEN ft.monthly_salary
                         WHEN s.type = 'Commissioned' THEN COALESCE(t.total_sales, 0) * c.commission_rate
                     END AS salary
 

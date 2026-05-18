@@ -21,7 +21,7 @@ class StaffService:
     
     # the needed attribute in creating new staff is dept_id, name, staff_type
     # famous_level is REQUIRED if staff_type is hourly
-    # monthly_salary is REQUIRED if staff_type is full_time
+    # monthly_salary is REQUIRED if staff_type is Monthly
     def create_staff(self, staff, famous_level=None, monthly_salary=None):
         validation = self.__check_staff(staff, famous_level, monthly_salary)
 
@@ -35,7 +35,7 @@ class StaffService:
 
     # the needed attribute in udpating staff is staff_id, dept_id, name, staff_type
     # famous_level is REQUIRED if staff_type is hourly
-    # monthly_salary is REQUIRED if staff_type is full_time
+    # monthly_salary is REQUIRED if staff_type is Monthly
     def update_staff(self, staff, famous_level=None, monthly_salary=None):
         validation = self.__check_staff(staff, famous_level, monthly_salary)
 
@@ -126,7 +126,7 @@ class StaffService:
             return "Name must only contain letters and spaces."
         
         if not is_valid_type:
-            return "Staff types are only 'Full Time', 'Hourly', or 'Commissioned'"
+            return "Staff types are only 'Monthly', 'Hourly', or 'Commissioned'"
         
         if not is_type_and_department_match:
             return "Staff types and department does not match."
@@ -134,7 +134,7 @@ class StaffService:
         if staff.staff_type == "Hourly" and famous_level is None:
             return "Include famous level of actor/actress to determine hourly rate."
         
-        if staff.staff_type == "Full Time" and monthly_salary is None:
+        if staff.staff_type == "Monthly" and monthly_salary is None:
             return "Include monthly salary."
 
         if famous_level is not None and famous_level not in [1, 2, 3, 4, 5]:
@@ -143,7 +143,7 @@ class StaffService:
         return True
     
     def __check_staff_type(self, type):
-        if type == "Full Time" or type == "Hourly" or type == "Commissioned":
+        if type == "Monthly" or type == "Hourly" or type == "Commissioned":
             return True
         return False
 

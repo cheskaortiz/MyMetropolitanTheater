@@ -86,10 +86,26 @@ def load_staff_by_department(department_id):
         conn = get_connection()
         cur  = conn.cursor()
         cur.execute("""
-            SELECT s.staff_id, s.name, s.type, d.name AS dept_name, ft.monthly_salary
+            SELECT s.staff_id, s.name, s.type, d.name AS dept_name,
+                   CASE
+                       WHEN s.type = 'Hourly' THEN COALESCE(w.total_hours, 0) * h.hourly_rate
+                       WHEN s.type = 'Monthly' THEN ft.monthly_salary
+                       WHEN s.type = 'Commissioned' THEN COALESCE(t.total_sales, 0) * c.commission_rate
+                   END AS earnings,
+                   ft.monthly_salary, h.hourly_rate, h.famous_level
             FROM   Staff s
             JOIN   Department d ON d.department_id = s.department_id
             LEFT JOIN Full_Time ft ON s.staff_id = ft.staff_id
+            LEFT JOIN Hourly h ON s.staff_id = h.staff_id
+            LEFT JOIN Commissioned c ON s.staff_id = c.staff_id
+            LEFT JOIN (
+                SELECT staff_id, SUM(hours_worked) AS total_hours
+                FROM Work_Log GROUP BY staff_id
+            ) w ON s.staff_id = w.staff_id
+            LEFT JOIN (
+                SELECT staff_id, SUM(amount) AS total_sales
+                FROM Transactions WHERE type = 'purchased' GROUP BY staff_id
+            ) t ON s.staff_id = t.staff_id
             WHERE  s.department_id = %s
             ORDER  BY s.name;
         """, (department_id,))
@@ -98,7 +114,8 @@ def load_staff_by_department(department_id):
         return [
             {"id": f"STAFF-{r[0]:02d}", "name": r[1],
              "role": r[2], "dept": r[3], "staff_id": r[0],
-             "salary": r[4]}
+             "earnings": r[4], "monthly_salary": r[5], 
+             "hourly_rate": r[6], "famous_level": r[7]}
             for r in rows
         ]
     except Exception as e:
@@ -338,6 +355,11 @@ def show_employee(emp):
     tk.Label(name_col, text=emp["role"], fg=TEXT_MID, bg=BG_PANEL,
              font=(FONT, 11), anchor="w").pack(anchor="w")
 
+    # Display current calculated earnings
+    earnings = f"₱{float(emp['earnings']):,.2f}" if emp.get("earnings") else "₱0.00"
+    tk.Label(name_col, text=f"Current Earnings: {earnings}", fg=ACCENT, bg=BG_PANEL,
+             font=(FONT, 10, "bold"), anchor="w").pack(anchor="w", pady=(4, 0))
+
     dept_col = tk.Frame(top_row, bg=BG_PANEL)
     dept_col.pack(side="right")
     tk.Label(dept_col, text="Department", fg=TEXT_DARK, bg=BG_PANEL,
@@ -399,7 +421,7 @@ def show_employee(emp):
              font=(FONT, 10, "bold")).pack(anchor="w")
 
     # ── Pay Type — loaded from DB staff type ───────────────────────────────
-    pay_types = ["Full_Time", "Hourly", "Commissioned"]
+    pay_types = ["Monthly", "Hourly", "Commissioned"]
     pay_var   = tk.StringVar(value=emp.get("role", "Select"))
     pay_combo = ttk.Combobox(pt_col, textvariable=pay_var,
                              values=pay_types,
@@ -407,12 +429,23 @@ def show_employee(emp):
     pay_combo.set(emp.get("role", "Select"))
     pay_combo.pack(anchor="w", pady=(6, 0))
 
+    ms_col = tk.Frame(pay_row, bg=BG_PANEL)
+    ms_col.pack(side="left", padx=(0, 30))
+    tk.Label(ms_col, text="Monthly Salary", fg=TEXT_DARK, bg=BG_PANEL,
+             font=(FONT, 10, "bold")).pack(anchor="w")
+    ms_canvas, ms_entry = make_rounded_entry(ms_col, width_px=160, bg_parent=BG_PANEL)
+    ms_canvas.pack(pady=(6, 0))
+    if emp.get("monthly_salary"):
+        ms_entry.insert(0, str(emp["monthly_salary"]))
+
     hr_col = tk.Frame(pay_row, bg=BG_PANEL)
     hr_col.pack(side="left", padx=(0, 30))
     tk.Label(hr_col, text="Hourly Rate", fg=TEXT_DARK, bg=BG_PANEL,
              font=(FONT, 10, "bold")).pack(anchor="w")
     hr_canvas, hr_entry = make_rounded_entry(hr_col, width_px=160, bg_parent=BG_PANEL)
     hr_canvas.pack(pady=(6, 0))
+    if emp.get("hourly_rate"):
+        hr_entry.insert(0, str(emp["hourly_rate"]))
 
     fl_col = tk.Frame(pay_row, bg=BG_PANEL)
     fl_col.pack(side="left")
@@ -420,6 +453,8 @@ def show_employee(emp):
              font=(FONT, 10, "bold")).pack(anchor="w")
     fl_canvas, fl_entry = make_rounded_entry(fl_col, width_px=160, bg_parent=BG_PANEL)
     fl_canvas.pack(pady=(6, 0))
+    if emp.get("famous_level"):
+        fl_entry.insert(0, str(emp["famous_level"]))
 
     # ── Card 2b: Entertainment performers panel ────────────────────────────
     # Only shown when the selected employee is in Entertainment dept
@@ -488,9 +523,10 @@ def show_employee(emp):
         rw = tk.Frame(card3, bg=row_bg)
         rw.pack(fill="x", padx=20)
 
+        # Salary column displays monthly fixed salary only for Monthly staff
         salary_val = ""
-        if emp.get("role") == "Full_Time" and emp.get("salary") is not None:
-            salary_val = f"₱{float(emp['salary']):,.2f}"
+        if emp.get("role") == "Monthly" and emp.get("monthly_salary"):
+            salary_val = f"₱{float(emp['monthly_salary']):,.2f}"
 
         for val, cw in [(date, 14), (sid, 16), (hrs, 16), (salary_val, 16)]:
             tk.Label(rw, text=val, fg=TEXT_DARK, bg=row_bg,

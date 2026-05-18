@@ -1,15 +1,25 @@
 import tkinter as tk
 from tkinter import ttk
+import sys
+import os
 
-# ── Shared Styling Constants ──────────────────────────────────────────────────
+# ── Colors ────────────────────────────────────────────────────────────────────
 BG_MAIN      = "#B0B0B0"
 BG_TOPBAR    = "#1E1E1E"
 BG_SIDEBAR   = "#9A9A9A"
 BG_SIDEBAR_H = "#888888"
 BG_ACTIVE    = "#C8C8C8"
-BG_PANEL     = "#EFEFEF"
-BG_STAGE     = "#D0D0D0"
+BG_PANEL     = "#F0F0F0"
+BG_INPUT     = "#E8E8E8"
+BG_INPUT_HOV = "#DEDEDE"
+BG_LIST      = "#F5F5F5"
+BG_DETAIL    = "#F0F0F0"
+BG_SEARCH    = "#E8E8E8"
+BG_TABLE_ROW = "#FFFFFF"
+BG_TABLE_ALT = "#F5F5F5"
 BG_RECEIPT   = "#F8F8F8"
+BG_STAGE     = "#D0D0D0"
+BG_CARD      = "#F0F0F0"
 SEAT_AVAIL   = "#2ECC40"
 SEAT_AVAIL_H = "#27AE34"
 SEAT_SOLD    = "#CC1111"
@@ -22,10 +32,23 @@ TEXT_LIGHT   = "#FFFFFF"
 TEXT_DARK    = "#1A1A1A"
 TEXT_MID     = "#555555"
 TEXT_MUTED   = "#AAAAAA"
-DIVIDER      = "#CCCCCC"
-FONT         = "Helvetica"
-RADIUS       = 5
-SW, SH       = 46, 36   # seat width, height
+DIVIDER      = "#DDDDDD"
+
+FONT   = "Helvetica"
+RADIUS = 10
+
+# ── All nav items ─────────────────────────────────────────────────────────────
+ALL_NAV = [
+    ("🎭", "Catalog"),
+    ("🎟",  "Sales"),
+    ("👤", "Personnel"),
+    ("💰", "Finances"),
+    ("👥", "Customers"),
+]
+
+SALES_NAV = [
+    ("🎟", "Sales"),
+]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def rounded_rect(canvas, x1, y1, x2, y2, r, **kw):
@@ -36,11 +59,13 @@ def rounded_rect(canvas, x1, y1, x2, y2, r, **kw):
     canvas.create_rectangle(x1+r, y1,   x2-r, y2,   **kw)
     canvas.create_rectangle(x1,   y1+r, x2,   y2-r, **kw)
 
-def make_canvas_btn(parent, text, command, w=80, h=32, fill=ACCENT, fill_hov=ACCENT_HOV, bg=BG_MAIN, fg=TEXT_LIGHT, font_size=10):
+def make_canvas_btn(parent, text, command, w=80, h=32,
+                    fill=ACCENT, fill_hov=ACCENT_HOV,
+                    bg=BG_MAIN, fg=TEXT_LIGHT, font_size=10):
     c = tk.Canvas(parent, width=w, height=h, bg=bg, highlightthickness=0, bd=0)
     def draw(color):
         c.delete("all")
-        rounded_rect(c, 0, 0, w, h, RADIUS, fill=color, outline=color)
+        rounded_rect(c, 0, 0, w, h, 5, fill=color, outline=color)
         c.create_text(w//2, h//2, text=text, fill=fg, font=(FONT, font_size, "bold"))
     draw(fill)
     c.bind("<Enter>",    lambda _: draw(fill_hov))
@@ -55,412 +80,751 @@ def center_on(win, parent, w, h):
     y = parent.winfo_y() + (parent.winfo_height() - h) // 2
     win.geometry(f"{w}x{h}+{x}+{y}")
 
-# ── Sales Tab ─────────────────────────────────────────────────────────────────
-class SalesTab(tk.Frame):
-    def __init__(self, parent):
-        super().__init__(parent, bg=BG_MAIN)
-        self.selected_seats = []
-        self.seat_states = {}
-        self.productions = [
-            "Hamlet — Jan 10, 7:00 PM",
-            "Hamlet — Jan 11, 7:00 PM",
-            "The Phantom of the Opera — Jan 15, 7:00 PM",
-            "The Phantom of the Opera — Jan 16, 7:00 PM",
-        ]
-        self.init_ui()
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB BUILDERS — each function receives a parent frame and builds content in it
+# ══════════════════════════════════════════════════════════════════════════════
 
-    def init_ui(self):
-        container = tk.Frame(self, bg=BG_MAIN)
-        container.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(container, text="🎟 Box Office (Ticketing)", fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 14))
-        
-        main_row = tk.Frame(container, bg=BG_MAIN)
-        main_row.pack(fill="both", expand=True)
+# ── CATALOG TAB ───────────────────────────────────────────────────────────────
+def build_catalog_tab(parent):
+    productions = [
+        {
+            "name": "Hamlet",
+            "start": "January 10, 2026",
+            "end":   "January 30, 2026",
+            "showtimes": [
+                ("January 10", "7:00 PM", 30, 30, "Open"),
+                ("January 11", "7:00 PM", 30, 30, "Open"),
+                ("January 12", "2:00 PM", 30, 30, "Open"),
+            ],
+        },
+        {
+            "name": "The Phantom of the Opera",
+            "start": "January 15, 2026",
+            "end":   "February 28, 2026",
+            "showtimes": [
+                ("January 15", "7:00 PM", 30, 30, "Open"),
+                ("January 16", "7:00 PM", 30, 30, "Open"),
+                ("January 17", "3:00 PM", 30, 30, "Open"),
+            ],
+        },
+    ]
 
-        left_col = tk.Frame(main_row, bg=BG_PANEL)
-        left_col.pack(side="left", fill="both", expand=True, padx=(0, 14))
-        
-        prod_header = tk.Frame(left_col, bg=BG_PANEL)
-        prod_header.pack(fill="x", padx=16, pady=(14, 8))
-        tk.Label(prod_header, text="Production", bg=BG_PANEL, fg=TEXT_DARK, font=(FONT, 12, "bold")).pack(anchor="w")
-        
-        self.production_var = tk.StringVar(value="Select")
-        prod_menu = ttk.Combobox(prod_header, textvariable=self.production_var, values=self.productions, state="readonly", font=(FONT, 11), width=34)
-        prod_menu.pack(anchor="w", pady=(4, 0))
-        prod_menu.bind("<<ComboboxSelected>>", lambda _: self.update_receipt())
+    content = tk.Frame(parent, bg=BG_MAIN)
+    content.pack(fill="both", expand=True, padx=20, pady=20)
 
-        seat_area = tk.Frame(left_col, bg=BG_PANEL)
-        seat_area.pack(fill="both", expand=True, padx=16, pady=(4, 16))
-        stage = tk.Frame(seat_area, bg=BG_STAGE, height=35)
-        stage.pack(fill="x", pady=(0, 18))
-        tk.Label(stage, text="STAGE", bg=BG_STAGE, font=(FONT, 12, "bold")).place(relx=0.5, rely=0.5, anchor="center")
+    tk.Label(content, text="Productions and Scheduling",
+             fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 14))
 
-        self.build_seating_layout(seat_area)
-        
-        legend = tk.Frame(seat_area, bg=BG_PANEL)
-        legend.pack(anchor="w", pady=(12, 0))
-        for color, label in [(SEAT_AVAIL, "Available"), (SEAT_SOLD, "Sold"), (SEAT_SEL, "Selected")]:
-            dot = tk.Canvas(legend, width=18, height=18, bg=BG_PANEL, highlightthickness=0)
-            dot.pack(side="left", padx=(0, 4))
-            dot.create_rectangle(2, 2, 16, 16, fill=color, outline=color)
-            tk.Label(legend, text=label, bg=BG_PANEL, fg=TEXT_DARK, font=(FONT, 10)).pack(side="left", padx=(0, 14))
+    panels_row = tk.Frame(content, bg=BG_MAIN)
+    panels_row.pack(fill="both", expand=True)
 
-        self.receipt_panel = tk.Frame(main_row, bg=BG_RECEIPT, width=300)
-        self.receipt_panel.pack(side="left", fill="y")
-        self.receipt_panel.pack_propagate(False)
-        self.setup_receipt()
+    # Left panel
+    left_panel = tk.Frame(panels_row, bg=BG_LIST, width=310)
+    left_panel.pack(side="left", fill="y", padx=(0, 14))
+    left_panel.pack_propagate(False)
 
-    def make_seat(self, parent, label):
-        self.seat_states[label] = "available"
-        c = tk.Canvas(parent, width=SW, height=SH, bg=BG_PANEL, highlightthickness=0, cursor="hand2")
-        def draw(hov=False):
-            st = self.seat_states[label]
-            color, hov_color = (SEAT_SEL, SEAT_SEL_H) if st=="selected" else (SEAT_AVAIL, SEAT_AVAIL_H)
-            if st == "sold": color, hov_color = (SEAT_SOLD, SEAT_SOLD_H)
+    search_frame = tk.Frame(left_panel, bg=BG_SEARCH)
+    search_frame.pack(fill="x", padx=10, pady=(10, 6))
+    tk.Label(search_frame, text="🔍", bg=BG_SEARCH, fg=TEXT_MID, font=("Arial", 11)).pack(side="left", padx=(6, 2), pady=6)
+    search_entry = tk.Entry(search_frame, font=(FONT, 11), bg=BG_SEARCH, fg=TEXT_MID, relief="flat", bd=0)
+    search_entry.insert(0, "Search")
+    search_entry.pack(side="left", fill="x", expand=True, pady=6, padx=4)
+
+    def sf_in(_):
+        if search_entry.get() == "Search":
+            search_entry.delete(0, "end"); search_entry.config(fg=TEXT_DARK)
+    def sf_out(_):
+        if search_entry.get() == "":
+            search_entry.insert(0, "Search"); search_entry.config(fg=TEXT_MID)
+    search_entry.bind("<FocusIn>", sf_in)
+    search_entry.bind("<FocusOut>", sf_out)
+
+    tk.Frame(left_panel, bg=DIVIDER, height=1).pack(fill="x", padx=10)
+
+    list_frame = tk.Frame(left_panel, bg=BG_LIST)
+    list_frame.pack(fill="both", expand=True, padx=4, pady=4)
+
+    right_panel = tk.Frame(panels_row, bg=BG_DETAIL)
+    right_panel.pack(side="left", fill="both", expand=True)
+
+    def show_production_detail(prod):
+        for w in right_panel.winfo_children():
+            w.destroy()
+        container = tk.Frame(right_panel, bg=BG_DETAIL)
+        container.pack(fill="both", expand=True, padx=24, pady=24)
+        tk.Label(container, text=f"Production Title: {prod['name']}",
+                 fg=ACCENT, bg=BG_DETAIL, font=(FONT, 17, "bold"), anchor="w").pack(anchor="w")
+        tk.Label(container, text=f"Season: {prod['start']} – {prod['end']}",
+                 fg=TEXT_MID, bg=BG_DETAIL, font=(FONT, 11), anchor="w").pack(anchor="w", pady=(2, 18))
+        table = tk.Frame(container, bg=BG_DETAIL)
+        table.pack(fill="x")
+        headers = ["Date", "Time", "Total Seats", "Seats Available", "Status"]
+        col_widths = [16, 12, 14, 18, 10]
+        header_row = tk.Frame(table, bg=BG_DETAIL)
+        header_row.pack(fill="x", pady=(0, 4))
+        for col, (h, cw) in enumerate(zip(headers, col_widths)):
+            tk.Label(header_row, text=h, fg=ACCENT, bg=BG_DETAIL,
+                     font=(FONT, 11, "bold"), width=cw, anchor="w").grid(row=0, column=col, padx=4, pady=6, sticky="w")
+        tk.Frame(table, bg=DIVIDER, height=1).pack(fill="x")
+        rows_frame = tk.Frame(table, bg=BG_DETAIL)
+        rows_frame.pack(fill="x")
+        for r_idx, (date, time, total, avail, status) in enumerate(prod["showtimes"]):
+            row_bg = BG_TABLE_ROW if r_idx % 2 == 0 else BG_TABLE_ALT
+            row_frame = tk.Frame(rows_frame, bg=row_bg)
+            row_frame.pack(fill="x")
+            tk.Frame(row_frame, bg=DIVIDER, height=1).pack(fill="x")
+            data_row = tk.Frame(row_frame, bg=row_bg)
+            data_row.pack(fill="x")
+            for col, (val, cw) in enumerate(zip([date, time, str(total), str(avail), status], col_widths)):
+                tk.Label(data_row, text=val, fg=TEXT_DARK, bg=row_bg,
+                         font=(FONT, 11), width=cw, anchor="w").grid(row=0, column=col, padx=4, pady=10, sticky="w")
+
+    selected_item = [None]
+    def make_list_item(idx, prod):
+        name, ds, de = prod["name"], prod["start"], prod["end"]
+        ds_short = ds.split(",")[0].replace("January", "Jan").replace("February", "Feb")
+        de_short = de.split(",")[0].replace("January", "Jan").replace("February", "Feb")
+        label_text = f"{idx}. {name} ({ds_short}–{de_short})"
+        if len(label_text) > 44:
+            label_text = label_text[:41] + "..."
+        item = tk.Label(list_frame, text=label_text, bg=BG_LIST, fg=TEXT_DARK,
+                        font=(FONT, 11), anchor="w", cursor="hand2", padx=10, pady=8)
+        item.pack(fill="x")
+        def on_select(_):
+            for w in list_frame.winfo_children():
+                w.config(bg=BG_LIST)
+            item.config(bg="#E0E0E0")
+            selected_item[0] = item
+            show_production_detail(prod)
+        item.bind("<Button-1>", on_select)
+        item.bind("<Enter>", lambda _: item.config(bg="#E8E8E8") if item.cget("bg") != "#E0E0E0" else None)
+        item.bind("<Leave>", lambda _: item.config(bg=BG_LIST)   if item.cget("bg") != "#E0E0E0" else None)
+
+    for i, prod in enumerate(productions, 1):
+        make_list_item(i, prod)
+
+    btn_row = tk.Frame(content, bg=BG_MAIN)
+    btn_row.pack(anchor="w", pady=(10, 0))
+    for lbl in ["EDIT", "ADD", "DELETE"]:
+        make_canvas_btn(btn_row, lbl, lambda: None, w=72, h=30, bg=BG_MAIN).pack(side="left", padx=(0, 8))
+
+    placeholder = tk.Frame(right_panel, bg=BG_DETAIL)
+    placeholder.place(relx=0.5, rely=0.5, anchor="center")
+    tk.Label(placeholder, text="Select a production from the list to manage\nshowtimes or click 'Add' to create a season.",
+             fg=TEXT_MUTED, bg=BG_DETAIL, font=(FONT, 13), justify="center").pack()
+
+
+# ── SALES TAB ─────────────────────────────────────────────────────────────────
+def build_sales_tab(parent):
+    productions_list = [
+        "Hamlet – Jan 10, 7:00 PM",
+        "Hamlet – Jan 11, 7:00 PM",
+        "The Phantom of the Opera – Jan 15, 7:00 PM",
+        "The Phantom of the Opera – Jan 16, 7:00 PM",
+    ]
+
+    selected_seats  = []
+    seat_buttons    = {}
+    seat_states     = {}
+
+    SW, SH = 46, 36
+
+    content = tk.Frame(parent, bg=BG_MAIN)
+    content.pack(fill="both", expand=True, padx=20, pady=20)
+
+    tk.Label(content, text="Box Office (Ticketing)",
+             fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 14))
+
+    main_row = tk.Frame(content, bg=BG_MAIN)
+    main_row.pack(fill="both", expand=True)
+
+    left_col = tk.Frame(main_row, bg=BG_PANEL)
+    left_col.pack(side="left", fill="both", expand=True, padx=(0, 14))
+
+    prod_header = tk.Frame(left_col, bg=BG_PANEL)
+    prod_header.pack(fill="x", padx=16, pady=(14, 8))
+    tk.Label(prod_header, text="Production", bg=BG_PANEL, fg=TEXT_DARK, font=(FONT, 12, "bold")).pack(anchor="w")
+
+    production_var = tk.StringVar(value="Select")
+
+    receipt_seat_var = tk.StringVar(value="Seat(s): —")
+    receipt_prod_var = tk.StringVar(value="Production: —")
+
+    def update_receipt():
+        seats_txt = ", ".join(selected_seats) if selected_seats else "—"
+        receipt_seat_var.set(f"Seat(s): {seats_txt}")
+        prod = production_var.get()
+        receipt_prod_var.set(f"Production: {prod if prod != 'Select' else '—'}")
+
+    prod_menu = ttk.Combobox(prod_header, textvariable=production_var,
+                             values=productions_list, state="readonly", font=(FONT, 11), width=34)
+    prod_menu.pack(anchor="w", pady=(4, 0))
+    prod_menu.bind("<<ComboboxSelected>>", lambda _: update_receipt())
+
+    seat_area = tk.Frame(left_col, bg=BG_PANEL)
+    seat_area.pack(fill="both", expand=True, padx=16, pady=(4, 16))
+
+    stage_frame = tk.Frame(seat_area, bg=BG_STAGE, height=38)
+    stage_frame.pack(fill="x", pady=(0, 18))
+    stage_frame.pack_propagate(False)
+    tk.Label(stage_frame, text="STAGE", bg=BG_STAGE, fg=TEXT_DARK, font=(FONT, 13, "bold")).place(relx=0.5, rely=0.5, anchor="center")
+
+    def make_seat(row_frame, label):
+        seat_states[label] = "available"
+        c = tk.Canvas(row_frame, width=SW, height=SH, bg=BG_PANEL, highlightthickness=0, bd=0, cursor="hand2")
+
+        def color_for(s):
+            if s == "sold":     return SEAT_SOLD, SEAT_SOLD_H
+            if s == "selected": return SEAT_SEL,  SEAT_SEL_H
+            return SEAT_AVAIL, SEAT_AVAIL_H
+
+        def draw(hover=False):
+            s = seat_states.get(label, "available")
+            normal, hov = color_for(s)
+            col = hov if hover else normal
             c.delete("all")
-            fill = hov_color if hov else color
-            rounded_rect(c, 1, 1, SW-1, SH-1, RADIUS, fill=fill, outline=fill)
+            rounded_rect(c, 1, 1, SW-1, SH-1, 5, fill=col, outline=col)
             c.create_text(SW//2, SH//2, text=label, fill=TEXT_LIGHT, font=(FONT, 8, "bold"))
-        def click(_):
-            if self.seat_states[label] == "sold": return
-            self.seat_states[label] = "selected" if self.seat_states[label] == "available" else "available"
-            if self.seat_states[label] == "selected": self.selected_seats.append(label)
-            else: self.selected_seats.remove(label)
-            draw(); self.update_receipt()
-        c.bind("<Enter>", lambda _: draw(True)); c.bind("<Leave>", lambda _: draw(False)); c.bind("<Button-1>", click)
-        draw(); return c
 
-    def build_seating_layout(self, area):
-        # Unified layout from SalesTab.py requirements
-        def add_row(lbl, seats, has_spacer=False):
-            row_f = tk.Frame(area, bg=BG_PANEL)
-            row_f.pack(pady=4)
-            tk.Label(row_f, text=lbl, bg=BG_PANEL, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
-            for s in seats:
-                self.make_seat(row_f, s).pack(side="left", padx=3)
-            tk.Label(row_f, text=lbl, bg=BG_PANEL, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
-
-        add_row("A", ["A1","A2","A3","A4"])
-        add_row("B", ["B1","B2","B3","B4","B5","B6"])
-        add_row("C", ["C1","C2","C3","C4","C5","C6","C7","C8"])
-        add_row("D", ["D1","D2","D3","D4","D5","D6","D7","D8"])
-        add_row("E", ["E1","E2","E3","E4"])
-
-    def setup_receipt(self):
-        def lbl(txt, bold=False, size=9, fg=TEXT_DARK, pady=0):
-            tk.Label(self.receipt_panel, text=txt, bg=BG_RECEIPT, fg=fg, 
-                     font=(FONT, size, "bold" if bold else "normal"), wraplength=260, justify="center").pack(pady=pady)
-        
-        def divider():
-            tk.Label(self.receipt_panel, text="- " * 28, bg=BG_RECEIPT, fg=DIVIDER, font=(FONT, 7)).pack()
-
-        tk.Frame(self.receipt_panel, height=20, bg=BG_RECEIPT).pack()
-        lbl("My Metropolitan Theater", bold=True, size=11)
-        lbl("OFFICIAL RECEIPT", size=9, fg=TEXT_MID)
-        tk.Frame(self.receipt_panel, height=10, bg=BG_RECEIPT).pack()
-        
-        lbl("Transaction ID: #TXN-0001")
-        lbl("Date: May 10, 2026")
-        divider()
-        lbl("CUSTOMER DETAILS", bold=True, fg=TEXT_MID)
-        divider()
-        lbl("Name: Juan Dela Cruz")
-        lbl("Email: juandelacruz@email.com")
-        divider()
-        lbl("TICKET INFORMATION", bold=True, fg=TEXT_MID)
-        divider()
-        
-        self.receipt_prod_var = tk.StringVar(value="Production: —")
-        tk.Label(self.receipt_panel, textvariable=self.receipt_prod_var, bg=BG_RECEIPT, font=(FONT, 9), wraplength=260).pack()
-        
-        self.receipt_seat_var = tk.StringVar(value="Seat(s): —")
-        tk.Label(self.receipt_panel, textvariable=self.receipt_seat_var, bg=BG_RECEIPT, font=(FONT, 9), wraplength=260).pack()
-        
-        divider()
-        lbl("PAYMENT SUMMARY", bold=True, fg=TEXT_MID)
-        divider()
-        lbl("Total Amount: ₱1,500.00", bold=True, size=12, pady=10)
-        
-        make_canvas_btn(self.receipt_panel, "Print Receipt", lambda: None, w=180, h=40).pack(pady=20)
-
-    def update_receipt(self):
-        self.receipt_seat_var.set(f"Seat(s): {', '.join(self.selected_seats) if self.selected_seats else '—'}")
-        prod = self.production_var.get()
-        self.receipt_prod_var.set(f"Production: {prod if prod != 'Select' else '—'}")
-
-# ── Catalog Tab ───────────────────────────────────────────────────────────────
-class CatalogTab(tk.Frame):
-    def __init__(self, parent):
-        super().__init__(parent, bg=BG_MAIN)
-        self.productions = [
-            ("P-001", "Hamlet", "Drama", "John Doe", "Jan 10-12", "Ongoing", "Shakespeare's classic tragedy of the Prince of Denmark."),
-            ("P-002", "Phantom of the Opera", "Musical", "Jane Smith", "Jan 15-18", "Draft", "A masked musical genius haunts the Paris Opera House."),
-            ("P-003", "Lion King", "Musical", "C. Evans", "Feb 01-05", "Upcoming", "Disney's pride lands come to life on the stage.")
-        ]
-        self.init_ui()
-
-    def init_ui(self):
-        container = tk.Frame(self, bg=BG_MAIN)
-        container.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(container, text="🎭 Production Catalog", fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 15))
-
-        main_row = tk.Frame(container, bg=BG_MAIN)
-        main_row.pack(fill="both", expand=True)
-
-        left_col = tk.Frame(main_row, bg=BG_PANEL)
-        left_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        
-        toolbar = tk.Frame(left_col, bg=BG_PANEL)
-        toolbar.pack(fill="x", padx=10, pady=10)
-        
-        search_ent = tk.Entry(toolbar, font=(FONT, 11), width=30, fg=TEXT_MID)
-        search_ent.insert(0, "Search productions...")
-        search_ent.pack(side="left", padx=5)
-        
-        make_canvas_btn(toolbar, "Search", lambda: None, w=80).pack(side="left", padx=5)
-        make_canvas_btn(toolbar, "Add Show", lambda: None, w=100).pack(side="right", padx=5)
-
-        cols = ("ID", "Title", "Genre", "Director", "Status")
-        self.tree = ttk.Treeview(left_col, columns=cols, show="headings")
-        for c in cols: self.tree.heading(c, text=c)
-        self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        for d in self.productions: self.tree.insert("", "end", values=d[:5])
-        self.tree.bind("<<TreeviewSelect>>", self.on_select)
-
-        self.detail_panel = tk.Frame(main_row, bg=BG_RECEIPT, width=300)
-        self.detail_panel.pack(side="left", fill="y")
-        self.detail_panel.pack_propagate(False)
-        
-        self.det_title = tk.StringVar(value="Select a Production")
-        self.det_desc = tk.StringVar(value="Details will appear here.")
-        tk.Label(self.detail_panel, textvariable=self.det_title, bg=BG_RECEIPT, font=(FONT, 14, "bold"), wraplength=260).pack(pady=20)
-        tk.Label(self.detail_panel, textvariable=self.det_desc, bg=BG_RECEIPT, font=(FONT, 10), wraplength=260, justify="left").pack(padx=20)
-
-    def on_select(self, _):
-        item = self.tree.selection()[0]
-        val = self.tree.item(item, "values")[0]
-        prod = next(p for p in self.productions if p[0] == val)
-        self.det_title.set(prod[1])
-        self.det_desc.set(f"ID: {prod[0]}\nGenre: {prod[2]}\nDirector: {prod[3]}\nSchedule: {prod[4]}\nStatus: {prod[5]}\n\nDescription:\n{prod[6]}")
-
-# ── Personnel Tab ─────────────────────────────────────────────────────────────
-class PersonnelTab(tk.Frame):
-    def __init__(self, parent):
-        super().__init__(parent, bg=BG_MAIN)
-        self.staff = [
-            ("ST-001", "Maria Santos", "Box Office", "0917-123-4567", "₱25,000", "Active"),
-            ("ST-002", "Jose Rizal", "Stage Crew", "0918-456-7890", "₱22,000", "Active"),
-            ("ST-003", "Andres Bonifacio", "Security", "0919-789-1234", "₱20,000", "On Leave")
-        ]
-        self.init_ui()
-
-    def init_ui(self):
-        container = tk.Frame(self, bg=BG_MAIN)
-        container.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(container, text="👤 Personnel Management", fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 15))
-
-        main_row = tk.Frame(container, bg=BG_MAIN)
-        main_row.pack(fill="both", expand=True)
-
-        left_col = tk.Frame(main_row, bg=BG_PANEL)
-        left_col.pack(side="left", fill="both", expand=True)
-        
-        toolbar = tk.Frame(left_col, bg=BG_PANEL)
-        toolbar.pack(fill="x", padx=10, pady=10)
-        make_canvas_btn(toolbar, "+ Add Staff", lambda: None, w=120).pack(side="left", padx=5)
-        make_canvas_btn(toolbar, "Payroll Report", lambda: None, w=140).pack(side="right", padx=5)
-
-        cols = ("EmpID", "Name", "Role", "Phone", "Salary", "Status")
-        tree = ttk.Treeview(left_col, columns=cols, show="headings")
-        for c in cols: tree.heading(c, text=c)
-        tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        for s in self.staff: tree.insert("", "end", values=s)
-
-# ── Finances Tab ──────────────────────────────────────────────────────────────
-class FinancesTab(tk.Frame):
-    def __init__(self, parent):
-        super().__init__(parent, bg=BG_MAIN)
-        self.init_ui()
-
-    def init_ui(self):
-        container = tk.Frame(self, bg=BG_MAIN)
-        container.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(container, text="💰 Financial Records", fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 15))
-
-        summary = tk.Frame(container, bg=BG_PANEL, height=100)
-        summary.pack(fill="x", pady=(0, 15))
-        summary.pack_propagate(False)
-        
-        stats = [("Total Revenue", "₱1,240,500", "#2ECC40"), ("Total Expenses", "₱450,200", "#CC1111"), ("Net Profit", "₱790,300", "#2196F3")]
-        for i, (l, v, c) in enumerate(stats):
-            f = tk.Frame(summary, bg=BG_PANEL)
-            f.place(relx=i*0.33, rely=0.5, anchor="w", relwidth=0.33)
-            tk.Label(f, text=l, bg=BG_PANEL, font=(FONT, 10), fg=TEXT_MID).pack()
-            tk.Label(f, text=v, bg=BG_PANEL, font=(FONT, 16, "bold"), fg=c).pack()
-
-        cols = ("ID", "Date", "Description", "Type", "Amount", "Status")
-        tree = ttk.Treeview(container, columns=cols, show="headings")
-        for c in cols: tree.heading(c, text=c)
-        tree.pack(fill="both", expand=True)
-        
-        data = [
-            ("T-501", "2026-05-10", "Ticket Sale #TXN-0001", "Income", "₱1,500", "Completed"),
-            ("T-502", "2026-05-10", "Utility Payment", "Expense", "-₱5,000", "Pending"),
-            ("T-503", "2026-05-09", "Hamlet Royalties", "Expense", "-₱20,000", "Completed")
-        ]
-        for d in data: tree.insert("", "end", values=d)
-
-# ── Customers Tab ─────────────────────────────────────────────────────────────
-class CustomersTab(tk.Frame):
-    def __init__(self, parent):
-        super().__init__(parent, bg=BG_MAIN)
-        self.customers = [
-            ("C-001", "Juan Dela Cruz", "juan@email.com", "0920-111-2222", "5", "₱7,500"),
-            ("C-002", "Pedro Penduko", "pedro@email.com", "0921-222-3333", "2", "₱3,000")
-        ]
-        self.init_ui()
-
-    def init_ui(self):
-        container = tk.Frame(self, bg=BG_MAIN)
-        container.pack(fill="both", expand=True, padx=20, pady=20)
-        tk.Label(container, text="👥 Customer Database", fg=ACCENT, bg=BG_MAIN, font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 15))
-
-        main_row = tk.Frame(container, bg=BG_MAIN)
-        main_row.pack(fill="both", expand=True)
-
-        left_col = tk.Frame(main_row, bg=BG_PANEL)
-        left_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
-
-        cols = ("ID", "Full Name", "Email", "Phone", "Tickets", "Spent")
-        self.tree = ttk.Treeview(left_col, columns=cols, show="headings")
-        for c in cols: self.tree.heading(c, text=c)
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-        for c in self.customers: self.tree.insert("", "end", values=c)
-        self.tree.bind("<<TreeviewSelect>>", self.on_select)
-
-        self.detail_panel = tk.Frame(main_row, bg=BG_RECEIPT, width=300)
-        self.detail_panel.pack(side="left", fill="y")
-        self.detail_panel.pack_propagate(False)
-        
-        self.cust_name = tk.StringVar(value="Customer Profile")
-        self.cust_details = tk.StringVar(value="Select a customer to view details.")
-        tk.Label(self.detail_panel, textvariable=self.cust_name, bg=BG_RECEIPT, font=(FONT, 14, "bold"), wraplength=260).pack(pady=20)
-        tk.Label(self.detail_panel, textvariable=self.cust_details, bg=BG_RECEIPT, font=(FONT, 10), wraplength=260, justify="left").pack(padx=20)
-
-    def on_select(self, _):
-        item = self.tree.selection()[0]
-        vals = self.tree.item(item, "values")
-        self.cust_name.set(vals[1])
-        self.cust_details.set(f"ID: {vals[0]}\nEmail: {vals[2]}\nPhone: {vals[3]}\nTotal Tickets: {vals[4]}\nTotal Spent: {vals[5]}")
-
-# ── Main Dashboard Application ────────────────────────────────────────────────
-class DashboardApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("My Metropolitan Theater")
-        self.root.geometry("1440x900")
-        self.root.configure(bg=BG_MAIN)
-
-        self.current_content = None
-        self.active_nav_frame = None
-        self.nav_items_widgets = []
-
-        self.setup_ui()
-        self.switch_tab("Sales")
-
-    def setup_ui(self):
-        topbar = tk.Frame(self.root, bg=BG_TOPBAR, height=50)
-        topbar.pack(fill="x", side="top")
-        topbar.pack_propagate(False)
-
-        tk.Label(topbar, text="MY METROPOLITAN THEATER", fg=ACCENT, bg=BG_TOPBAR, font=(FONT, 14, "bold")).pack(side="left", padx=20)
-        logout_btn = tk.Label(topbar, text="Logout ⬛→", fg=TEXT_LIGHT, bg=BG_TOPBAR, font=(FONT, 11), cursor="hand2")
-        logout_btn.pack(side="right", padx=20)
-        logout_btn.bind("<Button-1>", lambda _: self.confirm_logout())
-
-        body = tk.Frame(self.root, bg=BG_MAIN)
-        body.pack(fill="both", expand=True)
-
-        sidebar = tk.Frame(body, bg=BG_SIDEBAR, width=200)
-        sidebar.pack(side="left", fill="y")
-        sidebar.pack_propagate(False)
-        tk.Frame(sidebar, bg=BG_SIDEBAR, height=20).pack()
-
-        nav_tabs = [("🎭", "Catalog"), ("🎟", "Sales"), ("👤", "Personnel"), ("💰", "Finances"), ("👥", "Customers")]
-        for icon, label in nav_tabs:
-            self.create_nav_item(sidebar, icon, label)
-
-        self.content_area = tk.Frame(body, bg=BG_MAIN)
-        self.content_area.pack(side="left", fill="both", expand=True)
-
-    def create_nav_item(self, parent, icon, label):
-        frame = tk.Frame(parent, bg=BG_SIDEBAR, cursor="hand2")
-        frame.pack(fill="x")
-        il = tk.Label(frame, text=icon, bg=BG_SIDEBAR, fg=TEXT_LIGHT, font=("Arial", 14), width=3)
-        il.pack(side="left", padx=(15, 5), pady=15)
-        tl = tk.Label(frame, text=label, bg=BG_SIDEBAR, fg=TEXT_LIGHT, font=(FONT, 12))
-        tl.pack(side="left")
-
-        widgets = (frame, il, tl)
-        self.nav_items_widgets.append((label, widgets))
-
-        def on_enter(_):
-            if frame != self.active_nav_frame:
-                for w in (frame, il, tl): w.config(bg=BG_SIDEBAR_H)
-        def on_leave(_):
-            if frame != self.active_nav_frame:
-                for w in (frame, il, tl): w.config(bg=BG_SIDEBAR)
         def on_click(_):
-            self.switch_tab(label)
-
-        for w in widgets:
-            w.bind("<Enter>", on_enter); w.bind("<Leave>", on_leave); w.bind("<Button-1>", on_click)
-
-    def switch_tab(self, label):
-        for tab_label, widgets in self.nav_items_widgets:
-            frame, il, tl = widgets
-            if tab_label == label:
-                self.active_nav_frame = frame
-                frame.config(bg=BG_ACTIVE)
-                il.config(bg=BG_ACTIVE, fg=ACCENT)
-                tl.config(bg=BG_ACTIVE, fg=ACCENT, font=(FONT, 12, "bold"))
+            s = seat_states.get(label, "available")
+            if s == "sold": return
+            if s == "available":
+                seat_states[label] = "selected"
+                if label not in selected_seats: selected_seats.append(label)
             else:
-                frame.config(bg=BG_SIDEBAR)
-                il.config(bg=BG_SIDEBAR, fg=TEXT_LIGHT)
-                tl.config(bg=BG_SIDEBAR, fg=TEXT_LIGHT, font=(FONT, 12, "normal"))
+                seat_states[label] = "available"
+                if label in selected_seats: selected_seats.remove(label)
+            draw()
+            update_receipt()
 
-        if self.current_content: self.current_content.destroy()
-        
-        mapping = {"Sales": SalesTab, "Catalog": CatalogTab, "Personnel": PersonnelTab, "Finances": FinancesTab, "Customers": CustomersTab}
-        TabClass = mapping.get(label)
-        if TabClass:
-            self.current_content = TabClass(self.content_area)
-            self.current_content.pack(fill="both", expand=True)
+        c.bind("<Enter>",    lambda _: draw(hover=True))
+        c.bind("<Leave>",    lambda _: draw(hover=False))
+        c.bind("<Button-1>", on_click)
+        draw()
+        seat_buttons[label] = c
+        return c
 
-    def confirm_logout(self):
-        dlg = tk.Toplevel(self.root)
-        dlg.title("Logout")
-        dlg.configure(bg=TEXT_LIGHT); dlg.resizable(False, False)
-        dlg.transient(self.root); dlg.grab_set()
-        center_on(dlg, self.root, 380, 240)
+    BG_ROW = BG_PANEL
 
-        ic = tk.Canvas(dlg, width=90, height=90, bg=TEXT_LIGHT, highlightthickness=0)
-        ic.pack(pady=(28, 0))
-        ic.create_oval(5, 5, 85, 85, fill="#EEEEEE", outline="#EEEEEE")
-        ic.create_text(45, 47, text="⬛→", font=("Arial", 22), fill="#AAAAAA")
+    def add_seat_row(labels, row_label=None):
+        row = tk.Frame(seat_area, bg=BG_ROW)
+        row.pack(pady=4)
+        if row_label:
+            tk.Label(row, text=row_label, bg=BG_ROW, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
+        for lbl in labels:
+            make_seat(row, lbl).pack(side="left", padx=3)
+        if row_label:
+            tk.Label(row, text=row_label, bg=BG_ROW, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
 
-        tk.Label(dlg, text="Logout of the system?", fg=TEXT_DARK, bg=TEXT_LIGHT, font=(FONT, 12)).pack(pady=20)
-        btns = tk.Frame(dlg, bg=TEXT_LIGHT); btns.pack()
-        tk.Button(btns, text="Cancel", command=dlg.destroy, bg="#EEEEEE", relief="flat", padx=15, pady=5).pack(side="left", padx=10)
-        make_canvas_btn(btns, "Logout", self.root.destroy, w=100, h=35).pack(side="left", padx=10)
+    add_seat_row(["A1","A2","A3","A4"], "A")
 
-if __name__ == "__main__":
+    row_b = tk.Frame(seat_area, bg=BG_ROW); row_b.pack(pady=4)
+    tk.Label(row_b, text=" ", bg=BG_ROW, width=2).pack(side="left")
+    make_seat(row_b, "B1").pack(side="left", padx=3)
+    tk.Label(row_b, text="B", bg=BG_ROW, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
+    for lbl in ["B2","B3","B4","B5"]: make_seat(row_b, lbl).pack(side="left", padx=3)
+    tk.Label(row_b, text="B", bg=BG_ROW, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
+    make_seat(row_b, "B6").pack(side="left", padx=3)
+
+    for row_lbl, left_seats, right_seats in [("C", ["C1","C2"], ["C3","C4","C5","C6"], ), ("D", ["D1","D2"], ["D3","D4","D5","D6"])]:
+        row = tk.Frame(seat_area, bg=BG_ROW); row.pack(pady=4)
+        for lbl in left_seats: make_seat(row, lbl).pack(side="left", padx=3)
+        tk.Label(row, text=row_lbl, bg=BG_ROW, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
+        for lbl in right_seats: make_seat(row, lbl).pack(side="left", padx=3)
+        tk.Label(row, text=row_lbl, bg=BG_ROW, fg=TEXT_MID, font=(FONT, 10), width=2).pack(side="left")
+        extra = "C7" if row_lbl == "C" else "D7"
+        extra2 = "C8" if row_lbl == "C" else "D8"
+        for lbl in [extra, extra2]: make_seat(row, lbl).pack(side="left", padx=3)
+
+    add_seat_row(["E1","E2","E3","E4"], "E")
+
+    legend = tk.Frame(seat_area, bg=BG_ROW)
+    legend.pack(anchor="w", pady=(12, 0))
+    for color, label in [(SEAT_AVAIL, "Available"), (SEAT_SOLD, "Sold"), (SEAT_SEL, "Selected")]:
+        dot = tk.Canvas(legend, width=18, height=18, bg=BG_ROW, highlightthickness=0)
+        dot.pack(side="left", padx=(0, 4))
+        dot.create_rectangle(2, 2, 16, 16, fill=color, outline=color)
+        tk.Label(legend, text=label, bg=BG_ROW, fg=TEXT_DARK, font=(FONT, 10)).pack(side="left", padx=(0, 14))
+
+    # Receipt panel
+    receipt_panel = tk.Frame(main_row, bg=BG_RECEIPT, width=240)
+    receipt_panel.pack(side="left", fill="y")
+    receipt_panel.pack_propagate(False)
+
+    def label_receipt(text, bold=False, size=9, fg=TEXT_DARK, pady=0):
+        tk.Label(receipt_panel, text=text, bg=BG_RECEIPT, fg=fg,
+                 font=(FONT, size, "bold" if bold else "normal"),
+                 justify="center", wraplength=210).pack(pady=pady)
+
+    def divider_receipt():
+        tk.Label(receipt_panel, text="- " * 22, bg=BG_RECEIPT, fg=DIVIDER, font=(FONT, 7)).pack()
+
+    tk.Frame(receipt_panel, height=18, bg=BG_RECEIPT).pack()
+    label_receipt("My Metropolitan Theater", bold=True, size=10)
+    label_receipt("OFFICIAL RECEIPT", size=9, fg=TEXT_MID)
+    tk.Frame(receipt_panel, height=6, bg=BG_RECEIPT).pack()
+    label_receipt("Transaction ID: #TXN-0001")
+    label_receipt("Date: May 10, 2026")
+    label_receipt("Staff: Sales Agent")
+    tk.Frame(receipt_panel, height=4, bg=BG_RECEIPT).pack()
+    divider_receipt()
+    label_receipt("CUSTOMER DETAILS", bold=True, size=9, fg=TEXT_MID)
+    divider_receipt()
+    tk.Frame(receipt_panel, height=4, bg=BG_RECEIPT).pack()
+    label_receipt("Name: Juan Dela Cruz")
+    label_receipt("Email: juan@email.com")
+    label_receipt("Mobile: 0912-345-6789")
+    tk.Frame(receipt_panel, height=4, bg=BG_RECEIPT).pack()
+    divider_receipt()
+    label_receipt("TICKET INFORMATION", bold=True, size=9, fg=TEXT_MID)
+    divider_receipt()
+    tk.Frame(receipt_panel, height=4, bg=BG_RECEIPT).pack()
+    label_receipt("Ticket No: TKT-1025")
+    tk.Label(receipt_panel, textvariable=receipt_prod_var, bg=BG_RECEIPT, fg=TEXT_DARK,
+             font=(FONT, 9), justify="center", wraplength=210).pack()
+    label_receipt("Performance: May 20, 2026 at 7:00 PM")
+    tk.Label(receipt_panel, textvariable=receipt_seat_var, bg=BG_RECEIPT, fg=TEXT_DARK,
+             font=(FONT, 9), justify="center", wraplength=210).pack()
+    label_receipt("Status: Paid")
+    tk.Frame(receipt_panel, height=4, bg=BG_RECEIPT).pack()
+    divider_receipt()
+    label_receipt("PAYMENT SUMMARY", bold=True, size=9, fg=TEXT_MID)
+    divider_receipt()
+    tk.Frame(receipt_panel, height=4, bg=BG_RECEIPT).pack()
+    label_receipt("Payment Method: Cash")
+    label_receipt("Total Amount: ₱1,500.00")
+
+
+# ── PERSONNEL TAB ─────────────────────────────────────────────────────────────
+def build_personnel_tab(parent):
+    departments = ["Productions", "Box Offices/Sales", "Venue Operations",
+                   "Management/Administration", "Human Resources", "Technical Crew"]
+    employees = {
+        "Productions": [
+            {"name": "Mary Ruth Cathryn Suello", "role": "Lead Producer",  "id": "STAFF-01", "dept": "Production"},
+            {"name": "Jose Miguel Santos",        "role": "Stage Director", "id": "STAFF-02", "dept": "Production"},
+        ],
+        "Box Offices/Sales": [
+            {"name": "Ana Reyes",   "role": "Box Office Head", "id": "STAFF-03", "dept": "Box Offices/Sales"},
+            {"name": "Carlo Dizon", "role": "Sales Associate", "id": "STAFF-04", "dept": "Box Offices/Sales"},
+        ],
+        "Venue Operations": [
+            {"name": "Lito Fernandez", "role": "Venue Manager", "id": "STAFF-05", "dept": "Venue Operations"},
+        ],
+        "Management/Administration": [
+            {"name": "Grace Dela Cruz", "role": "Admin Officer", "id": "STAFF-06", "dept": "Management/Administration"},
+        ],
+        "Human Resources": [
+            {"name": "Patricia Lim", "role": "HR Manager", "id": "STAFF-07", "dept": "Human Resources"},
+        ],
+        "Technical Crew": [
+            {"name": "Ramon Cruz",  "role": "Lighting Tech", "id": "STAFF-08", "dept": "Technical Crew"},
+            {"name": "Ella Torres", "role": "Sound Tech",    "id": "STAFF-09", "dept": "Technical Crew"},
+        ],
+    }
+    time_logs = {
+        "STAFF-01": [("10/01","STAFF-01","8.00"),("10/02","STAFF-01","8.30"),("10/03","STAFF-01","4.00")],
+        "STAFF-02": [("10/01","STAFF-02","7.00"),("10/02","STAFF-02","8.00")],
+    }
+
+    content = tk.Frame(parent, bg=BG_MAIN)
+    content.pack(fill="both", expand=True, padx=20, pady=20)
+
+    tk.Label(content, text="Staff and Payroll", fg=ACCENT, bg=BG_MAIN,
+             font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 14))
+
+    main_row = tk.Frame(content, bg=BG_MAIN)
+    main_row.pack(fill="both", expand=True)
+
+    left_panel = tk.Frame(main_row, bg=BG_PANEL, width=270)
+    left_panel.pack(side="left", fill="y", padx=(0, 12))
+    left_panel.pack_propagate(False)
+
+    tk.Label(left_panel, text="Employee Directory", fg=TEXT_DARK, bg=BG_PANEL,
+             font=(FONT, 12, "bold")).pack(anchor="w", padx=16, pady=(16, 8))
+
+    search_frame = tk.Frame(left_panel, bg=BG_INPUT)
+    search_frame.pack(fill="x", padx=16, pady=(0, 12))
+    tk.Label(search_frame, text="🔍", bg=BG_INPUT, fg=TEXT_MID, font=("Arial", 10)).pack(side="left", padx=6, pady=6)
+    search_entry = tk.Entry(search_frame, font=(FONT, 10), bg=BG_INPUT, fg=TEXT_MID, relief="flat", bd=0)
+    search_entry.insert(0, "Search")
+    search_entry.pack(side="left", fill="x", expand=True, pady=6)
+    def sf_in(_):
+        if search_entry.get() == "Search": search_entry.delete(0, "end"); search_entry.config(fg=TEXT_DARK)
+    def sf_out(_):
+        if search_entry.get() == "": search_entry.insert(0, "Search"); search_entry.config(fg=TEXT_MID)
+    search_entry.bind("<FocusIn>", sf_in); search_entry.bind("<FocusOut>", sf_out)
+
+    tk.Label(left_panel, text="Departments", fg=TEXT_DARK, bg=BG_PANEL,
+             font=(FONT, 11, "bold")).pack(anchor="w", padx=16, pady=(0, 8))
+
+    dir_canvas = tk.Canvas(left_panel, bg=BG_PANEL, highlightthickness=0, bd=0)
+    dir_scroll  = ttk.Scrollbar(left_panel, orient="vertical", command=dir_canvas.yview)
+    dir_canvas.configure(yscrollcommand=dir_scroll.set)
+    dir_scroll.pack(side="right", fill="y")
+    dir_canvas.pack(side="left", fill="both", expand=True)
+
+    dir_inner = tk.Frame(dir_canvas, bg=BG_PANEL)
+    dir_win   = dir_canvas.create_window((0, 0), window=dir_inner, anchor="nw")
+    def on_dir_cfg(_):
+        dir_canvas.configure(scrollregion=dir_canvas.bbox("all"))
+        dir_canvas.itemconfig(dir_win, width=dir_canvas.winfo_width())
+    dir_inner.bind("<Configure>", on_dir_cfg)
+    dir_canvas.bind("<Configure>", lambda e: dir_canvas.itemconfig(dir_win, width=e.width))
+
+    right_panel = tk.Frame(main_row, bg=BG_MAIN)
+    right_panel.pack(side="left", fill="both", expand=True)
+
+    placeholder = tk.Frame(right_panel, bg=BG_MAIN)
+    placeholder.place(relx=0.5, rely=0.5, anchor="center")
+    tk.Label(placeholder, text="Select an employee from the directory\nto view their details.",
+             fg=TEXT_MUTED, bg=BG_MAIN, font=(FONT, 13), justify="center").pack()
+
+    current_employee = [None]
+
+    def show_employee(emp):
+        current_employee[0] = emp
+        for w in right_panel.winfo_children():
+            w.destroy()
+        rsc = tk.Canvas(right_panel, bg=BG_MAIN, highlightthickness=0, bd=0)
+        sb  = ttk.Scrollbar(right_panel, orient="vertical", command=rsc.yview)
+        rsc.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        rsc.pack(side="left", fill="both", expand=True)
+        inner  = tk.Frame(rsc, bg=BG_MAIN)
+        win_id = rsc.create_window((0, 0), window=inner, anchor="nw")
+        def on_cfg(_):
+            rsc.configure(scrollregion=rsc.bbox("all"))
+            rsc.itemconfig(win_id, width=rsc.winfo_width())
+        inner.bind("<Configure>", on_cfg)
+        rsc.bind("<Configure>", lambda e: rsc.itemconfig(win_id, width=e.width))
+
+        card1 = tk.Frame(inner, bg=BG_PANEL)
+        card1.pack(fill="x", pady=(0, 10))
+        top_row = tk.Frame(card1, bg=BG_PANEL)
+        top_row.pack(fill="x", padx=20, pady=(16, 4))
+        name_col = tk.Frame(top_row, bg=BG_PANEL)
+        name_col.pack(side="left", fill="x", expand=True)
+        tk.Label(name_col, text=emp["name"], fg=TEXT_DARK, bg=BG_PANEL, font=(FONT, 15, "bold"), anchor="w").pack(anchor="w")
+        tk.Label(name_col, text=emp["role"], fg=TEXT_MID,  bg=BG_PANEL, font=(FONT, 11), anchor="w").pack(anchor="w")
+        info_row = tk.Frame(card1, bg=BG_PANEL)
+        info_row.pack(fill="x", padx=20, pady=(8, 16))
+        id_col = tk.Frame(info_row, bg=BG_PANEL)
+        id_col.pack(side="left", padx=(0, 60))
+        tk.Label(id_col, text="ID", fg=TEXT_DARK, bg=BG_PANEL, font=(FONT, 10, "bold")).pack(anchor="w")
+        tk.Label(id_col, text=emp["id"], fg=TEXT_DARK, bg=BG_PANEL, font=(FONT, 11)).pack(anchor="w")
+        di_col = tk.Frame(info_row, bg=BG_PANEL)
+        di_col.pack(side="left")
+        tk.Label(di_col, text="Department", fg=TEXT_DARK, bg=BG_PANEL, font=(FONT, 10, "bold")).pack(anchor="w")
+        tk.Label(di_col, text=emp["dept"], fg=TEXT_DARK, bg=BG_PANEL, font=(FONT, 11)).pack(anchor="w")
+
+        card3 = tk.Frame(inner, bg=BG_PANEL)
+        card3.pack(fill="x", pady=(0, 10))
+        tk.Label(card3, text="Time Tracking", fg=TEXT_DARK, bg=BG_PANEL, font=(FONT, 13, "bold")).pack(anchor="w", padx=20, pady=(16, 10))
+        tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)
+        th_row = tk.Frame(card3, bg=BG_PANEL)
+        th_row.pack(fill="x", padx=20, pady=(6, 2))
+        for col_text, col_w in [("Date", 12), ("Staff ID", 16), ("Hours Worked", 16)]:
+            tk.Label(th_row, text=col_text, fg=ACCENT, bg=BG_PANEL, font=(FONT, 10, "bold"), width=col_w, anchor="w").pack(side="left")
+        tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)
+        logs = time_logs.get(emp["id"], [])
+        for i, (date, sid, hrs) in enumerate(logs):
+            row_bg = TEXT_LIGHT if i % 2 == 0 else BG_TABLE_ALT
+            rw = tk.Frame(card3, bg=row_bg)
+            rw.pack(fill="x", padx=20)
+            for val, cw in [(date, 12), (sid, 16), (hrs, 16)]:
+                tk.Label(rw, text=val, fg=TEXT_DARK, bg=row_bg, font=(FONT, 10), width=cw, anchor="w").pack(side="left", pady=8)
+            tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)
+        tk.Frame(card3, height=12, bg=BG_PANEL).pack()
+
+    dept_open = {}
+    selected_emp_row = [None]
+    selected_emp_lbl = [None]
+
+    def toggle_dept(dept, emp_container, arrow_lbl):
+        dept_open[dept] = not dept_open.get(dept, False)
+        if dept_open[dept]:
+            emp_container.pack(fill="x")
+            arrow_lbl.config(text="∧")
+        else:
+            emp_container.pack_forget()
+            arrow_lbl.config(text="∨")
+
+    for dept in departments:
+        dept_open[dept] = False
+        wrapper = tk.Frame(dir_inner, bg=BG_PANEL)
+        wrapper.pack(fill="x", pady=2, padx=8)
+        dept_row = tk.Frame(wrapper, bg=BG_INPUT, cursor="hand2")
+        dept_row.pack(fill="x")
+        dept_lbl = tk.Label(dept_row, text=dept, bg=BG_INPUT, fg=TEXT_DARK, font=(FONT, 10), anchor="w")
+        dept_lbl.pack(side="left", padx=8, pady=8, fill="x", expand=True)
+        arrow = tk.Label(dept_row, text="∨", bg=BG_INPUT, fg=TEXT_MID, font=(FONT, 10))
+        arrow.pack(side="right", padx=8)
+        emp_container = tk.Frame(wrapper, bg=BG_PANEL)
+
+        for emp_data in employees.get(dept, []):
+            e = emp_data
+            emp_row = tk.Frame(emp_container, bg=BG_PANEL, cursor="hand2")
+            emp_row.pack(fill="x")
+            emp_lbl = tk.Label(emp_row, text=f"  • {e['name']}", bg=BG_PANEL,
+                                fg=TEXT_DARK, font=(FONT, 9), anchor="w")
+            emp_lbl.pack(side="left", padx=12, pady=5, fill="x", expand=True)
+            def on_click(_, emp=e, er=emp_row, el=emp_lbl):
+                if selected_emp_row[0]: selected_emp_row[0].config(bg=BG_PANEL)
+                if selected_emp_lbl[0]: selected_emp_lbl[0].config(bg=BG_PANEL)
+                er.config(bg="#E0E0E0"); el.config(bg="#E0E0E0")
+                selected_emp_row[0] = er; selected_emp_lbl[0] = el
+                show_employee(emp)
+            for w in (emp_row, emp_lbl):
+                w.bind("<Button-1>", on_click)
+
+        for w in (dept_row, dept_lbl, arrow):
+            w.bind("<Button-1>", lambda _, d=dept, ec=emp_container, a=arrow: toggle_dept(d, ec, a))
+
+
+# ── FINANCE TAB ───────────────────────────────────────────────────────────────
+def build_finance_tab(parent):
+    content = tk.Frame(parent, bg=BG_MAIN)
+    content.pack(fill="both", expand=True, padx=20, pady=20)
+
+    tk.Label(content, text="Finance and Transactions", fg=ACCENT, bg=BG_MAIN,
+             font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 14))
+
+    summary_row = tk.Frame(content, bg=BG_MAIN)
+    summary_row.pack(fill="x", pady=(0, 16))
+
+    for title, value in [("Total Revenue", "₱125,400.00"), ("Tickets Sold", "312"), ("Refunds", "8"), ("Net Income", "₱118,200.00")]:
+        card = tk.Frame(summary_row, bg=BG_CARD, padx=20, pady=14)
+        card.pack(side="left", padx=(0, 12), fill="y")
+        tk.Label(card, text=title, fg=TEXT_MID, bg=BG_CARD, font=(FONT, 10)).pack(anchor="w")
+        tk.Label(card, text=value, fg=ACCENT,   bg=BG_CARD, font=(FONT, 16, "bold")).pack(anchor="w")
+
+    table_frame = tk.Frame(content, bg=BG_PANEL)
+    table_frame.pack(fill="both", expand=True)
+
+    headers = ["Transaction ID", "Date", "Customer", "Production", "Seats", "Amount", "Status"]
+    col_widths = [14, 12, 20, 24, 8, 14, 10]
+
+    header_row = tk.Frame(table_frame, bg=BG_PANEL)
+    header_row.pack(fill="x", padx=16, pady=(12, 4))
+    for h, cw in zip(headers, col_widths):
+        tk.Label(header_row, text=h, fg=ACCENT, bg=BG_PANEL,
+                 font=(FONT, 10, "bold"), width=cw, anchor="w").pack(side="left")
+
+    tk.Frame(table_frame, bg=DIVIDER, height=1).pack(fill="x", padx=16)
+
+    sample_rows = [
+        ("#TXN-001", "May 10", "Juan Dela Cruz",      "Hamlet",              "A1",     "₱500",   "Paid"),
+        ("#TXN-002", "May 11", "Maria Santos",        "Phantom of the Opera","B2,B3",  "₱1,000", "Paid"),
+        ("#TXN-003", "May 12", "Pedro Reyes",         "Hamlet",              "C5",     "₱500",   "Refunded"),
+        ("#TXN-004", "May 13", "Ana Garcia",          "Phantom of the Opera","D1",     "₱500",   "Paid"),
+    ]
+
+    for i, row_data in enumerate(sample_rows):
+        row_bg = BG_TABLE_ROW if i % 2 == 0 else BG_TABLE_ALT
+        row = tk.Frame(table_frame, bg=row_bg)
+        row.pack(fill="x", padx=16)
+        for val, cw in zip(row_data, col_widths):
+            fg = ACCENT if val == "Refunded" else TEXT_DARK
+            tk.Label(row, text=val, fg=fg, bg=row_bg,
+                     font=(FONT, 10), width=cw, anchor="w").pack(side="left", pady=10)
+        tk.Frame(table_frame, bg=DIVIDER, height=1).pack(fill="x", padx=16)
+
+
+# ── CUSTOMERS TAB ─────────────────────────────────────────────────────────────
+def build_customers_tab(parent):
+    CUSTOMERS = [
+        {"name": "Mary Ruth Cathryn Suello", "email": "toothiefruthie@gmail.com", "mobile": "09284713504"},
+        {"name": "Jose Miguel Santos",        "email": "josemiguel@email.com",     "mobile": "09171234567"},
+        {"name": "Ana Reyes",                 "email": "ana.reyes@email.com",       "mobile": "09281234567"},
+        {"name": "Carlo Dizon",               "email": "carlo.dizon@email.com",     "mobile": "09194567890"},
+    ]
+
+    content = tk.Frame(parent, bg=BG_MAIN)
+    content.pack(fill="both", expand=True, padx=20, pady=20)
+
+    tk.Label(content, text="Customer Management", fg=ACCENT, bg=BG_MAIN,
+             font=(FONT, 22, "bold")).pack(anchor="w", pady=(0, 14))
+
+    search_frame = tk.Frame(content, bg=BG_SEARCH)
+    search_frame.pack(anchor="w", pady=(0, 12))
+    tk.Label(search_frame, text="🔍", bg=BG_SEARCH, fg=TEXT_MID, font=("Arial", 11)).pack(side="left", padx=(6, 2), pady=6)
+    search_entry = tk.Entry(search_frame, font=(FONT, 11), bg=BG_SEARCH, fg=TEXT_MID, relief="flat", bd=0, width=30)
+    search_entry.insert(0, "Search customers...")
+    search_entry.pack(side="left", pady=6, padx=4)
+
+    table_frame = tk.Frame(content, bg=BG_PANEL)
+    table_frame.pack(fill="both", expand=True)
+
+    headers = ["Name", "Email", "Mobile", "Actions"]
+    col_widths = [24, 28, 16, 20]
+
+    header_row = tk.Frame(table_frame, bg=BG_PANEL)
+    header_row.pack(fill="x", padx=16, pady=(12, 4))
+    for h, cw in zip(headers, col_widths):
+        tk.Label(header_row, text=h, fg=ACCENT, bg=BG_PANEL,
+                 font=(FONT, 10, "bold"), width=cw, anchor="w").pack(side="left")
+
+    tk.Frame(table_frame, bg=DIVIDER, height=1).pack(fill="x", padx=16)
+
+    for i, cust in enumerate(CUSTOMERS):
+        row_bg = BG_TABLE_ROW if i % 2 == 0 else BG_TABLE_ALT
+        row = tk.Frame(table_frame, bg=row_bg)
+        row.pack(fill="x", padx=16)
+        for val, cw in zip([cust["name"], cust["email"], cust["mobile"]], col_widths[:3]):
+            tk.Label(row, text=val, fg=TEXT_DARK, bg=row_bg,
+                     font=(FONT, 10), width=cw, anchor="w").pack(side="left", pady=10)
+        btn = make_canvas_btn(row, "View History", lambda: None, w=110, h=28, bg=row_bg)
+        btn.pack(side="left", padx=4)
+        tk.Frame(table_frame, bg=DIVIDER, height=1).pack(fill="x", padx=16)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD WINDOW
+# ══════════════════════════════════════════════════════════════════════════════
+
+def open_dashboard(role, staff_id):
     root = tk.Tk()
-    style = ttk.Style()
-    style.theme_use("clam")
-    style.configure("TCombobox", fieldbackground=BG_PANEL, background=BG_PANEL, foreground=TEXT_DARK, arrowcolor=TEXT_DARK)
-    style.configure("Treeview", background=BG_PANEL, fieldbackground=BG_PANEL, foreground=TEXT_DARK, font=(FONT, 10), rowheight=30)
-    style.configure("Treeview.Heading", background=BG_SIDEBAR, foreground=TEXT_LIGHT, font=(FONT, 10, "bold"))
-    style.map("Treeview", background=[('selected', ACCENT)], foreground=[('selected', TEXT_LIGHT)])
-    app = DashboardApp(root)
+    root.title("My Metropolitan Theater")
+    root.geometry("1920x1080")
+    root.configure(bg=BG_MAIN)
+
+    # Determine nav based on role
+    nav_items = ALL_NAV if role == "MANAGER" else SALES_NAV
+
+    # ── Top bar ───────────────────────────────────────────────────────────────
+    topbar = tk.Frame(root, bg=BG_TOPBAR, height=45)
+    topbar.pack(fill="x", side="top")
+    topbar.pack_propagate(False)
+
+    tk.Label(topbar, text="MY METROPOLITAN THEATER",
+             fg=ACCENT, bg=BG_TOPBAR, font=(FONT, 13, "bold")).pack(side="left", padx=18, pady=10)
+
+    role_lbl = tk.Label(topbar, text=f"👤  {role}  |  ID: {staff_id}",
+                        fg=TEXT_LIGHT, bg=BG_TOPBAR, font=(FONT, 10))
+    role_lbl.pack(side="right", padx=(0, 8))
+
+    logout_lbl = tk.Label(topbar, text="⬛→", fg=TEXT_LIGHT, bg=BG_TOPBAR, font=(FONT, 14), cursor="hand2")
+    logout_lbl.pack(side="right", padx=8)
+    logout_lbl.bind("<Enter>",    lambda _: logout_lbl.config(fg=ACCENT))
+    logout_lbl.bind("<Leave>",    lambda _: logout_lbl.config(fg=TEXT_LIGHT))
+
+    def open_logout_dialog():
+        dlg = tk.Toplevel(root)
+        dlg.title("")
+        dlg.configure(bg=TEXT_LIGHT)
+        dlg.resizable(False, False)
+        dlg.transient(root)
+        dlg.grab_set()
+        x = root.winfo_x() + (root.winfo_width() - 380) // 2
+        y = root.winfo_y() + (root.winfo_height() - 240) // 2
+        dlg.geometry(f"380x240+{x}+{y}")
+        tk.Label(dlg, text="Are you sure you want to logout?",
+                 fg=TEXT_DARK, bg=TEXT_LIGHT, font=(FONT, 13)).pack(pady=(50, 20))
+        br = tk.Frame(dlg, bg=TEXT_LIGHT)
+        br.pack()
+        tk.Button(br, text="Cancel", bg="#EEEEEE", fg=TEXT_DARK, font=(FONT, 11),
+                  relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+                  command=dlg.destroy, activebackground="#DDDDDD").pack(side="left", padx=(0, 12))
+        make_canvas_btn(br, "Logout", root.destroy, w=90, h=36, fill=ACCENT,
+                        fill_hov=ACCENT_HOV, bg=TEXT_LIGHT).pack(side="left")
+
+    logout_lbl.bind("<Button-1>", lambda _: open_logout_dialog())
+
+    # ── Body ──────────────────────────────────────────────────────────────────
+    body = tk.Frame(root, bg=BG_MAIN)
+    body.pack(fill="both", expand=True)
+
+    # ── Sidebar ───────────────────────────────────────────────────────────────
+    sidebar = tk.Frame(body, bg=BG_SIDEBAR, width=175)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
+    tk.Frame(sidebar, bg=BG_SIDEBAR, height=20).pack()
+
+    # ── Content area ──────────────────────────────────────────────────────────
+    content_area = tk.Frame(body, bg=BG_MAIN)
+    content_area.pack(side="left", fill="both", expand=True)
+
+    # Map tab name to builder function
+    tab_builders = {
+        "Catalog":    build_catalog_tab,
+        "Sales":      build_sales_tab,
+        "Personnel":  build_personnel_tab,
+        "Finances":   build_finance_tab,
+        "Customers":  build_customers_tab,
+    }
+
+    # Cache frames so switching is instant
+    tab_frames = {}
+    active_nav = [None]
+    active_nav_widgets = [None]  # (frame, icon_lbl, text_lbl)
+
+    def switch_tab(tab_name, nav_frame, icon_lbl, text_lbl):
+        # Update sidebar highlight
+        if active_nav_widgets[0]:
+            pf, pi, pt = active_nav_widgets[0]
+            pf.config(bg=BG_SIDEBAR); pi.config(bg=BG_SIDEBAR, fg=TEXT_LIGHT); pt.config(bg=BG_SIDEBAR, fg=TEXT_LIGHT)
+        nav_frame.config(bg=BG_ACTIVE); icon_lbl.config(bg=BG_ACTIVE, fg=ACCENT); text_lbl.config(bg=BG_ACTIVE, fg=ACCENT)
+        active_nav[0] = tab_name
+        active_nav_widgets[0] = (nav_frame, icon_lbl, text_lbl)
+
+        # Hide all tab frames
+        for f in tab_frames.values():
+            f.pack_forget()
+
+        # Build tab if not yet built
+        if tab_name not in tab_frames:
+            frame = tk.Frame(content_area, bg=BG_MAIN)
+            tab_builders[tab_name](frame)
+            tab_frames[tab_name] = frame
+
+        tab_frames[tab_name].pack(fill="both", expand=True)
+
+    # Build sidebar nav items
+    for i, (icon, label) in enumerate(nav_items):
+        is_first = (i == 0)
+        bg = BG_ACTIVE if is_first else BG_SIDEBAR
+        nav_frame = tk.Frame(sidebar, bg=bg, cursor="hand2")
+        nav_frame.pack(fill="x")
+        icon_lbl = tk.Label(nav_frame, text=icon, bg=bg,
+                            fg=ACCENT if is_first else TEXT_LIGHT,
+                            font=("Arial", 13), width=3)
+        icon_lbl.pack(side="left", padx=(10, 4), pady=12)
+        text_lbl = tk.Label(nav_frame, text=label, bg=bg,
+                            fg=ACCENT if is_first else TEXT_LIGHT,
+                            font=(FONT, 12, "bold" if is_first else "normal"))
+        text_lbl.pack(side="left")
+
+        def on_enter(_, f=nav_frame, il=icon_lbl, tl=text_lbl, lbl=label):
+            if active_nav[0] != lbl:
+                f.config(bg=BG_SIDEBAR_H); il.config(bg=BG_SIDEBAR_H); tl.config(bg=BG_SIDEBAR_H)
+        def on_leave(_, f=nav_frame, il=icon_lbl, tl=text_lbl, lbl=label):
+            if active_nav[0] != lbl:
+                f.config(bg=BG_SIDEBAR); il.config(bg=BG_SIDEBAR); tl.config(bg=BG_SIDEBAR)
+        def on_click(_, lbl=label, f=nav_frame, il=icon_lbl, tl=text_lbl):
+            switch_tab(lbl, f, il, tl)
+
+        for w in (nav_frame, icon_lbl, text_lbl):
+            w.bind("<Enter>",    on_enter)
+            w.bind("<Leave>",    on_leave)
+            w.bind("<Button-1>", on_click)
+
+        if is_first:
+            active_nav[0] = label
+            active_nav_widgets[0] = (nav_frame, icon_lbl, text_lbl)
+
+    # Load first tab
+    first_tab = nav_items[0][1]
+    frame = tk.Frame(content_area, bg=BG_MAIN)
+    tab_builders[first_tab](frame)
+    tab_frames[first_tab] = frame
+    frame.pack(fill="both", expand=True)
+
     root.mainloop()
+
+
+# ── Run standalone for testing ────────────────────────────────────────────────
+if __name__ == "__main__":
+    # Test as MANAGER
+    open_dashboard("MANAGER", 1)

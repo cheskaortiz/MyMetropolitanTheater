@@ -1,13 +1,43 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import psycopg2
+import os
+import sys
+
+# ── Backend Setup ────────────────────────────────────────────────────────────
+def setup_backend():
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    for _ in range(8):
+        if os.path.exists(os.path.join(current_dir, "backend")):
+            sys.path.insert(0, os.path.join(current_dir, "backend"))
+            sys.path.insert(0, current_dir)
+            return True
+        current_dir = os.path.dirname(current_dir)
+    return False
+
+setup_backend()
+
+backend_error = None
+try:
+    from backend.start_database import start_database
+    # Ensure we can import the WorkLog object correctly
+    from backend.objects.work_log_obj import WorkLog
+except ImportError as e:
+    start_database = None
+    backend_error = f"Import Error: {e}"
+
+db_instance = start_database() if start_database else None
+if start_database and db_instance is False:
+    backend_error = "Database Connection Error: Could not connect to PostgreSQL. Check if the service is running."
+elif not start_database:
+    backend_error = backend_error or "Backend modules not found."
 
 # ── Database Connection ────────────────────────────────────────────────────────
 # TODO: Update these credentials to match your PostgreSQL setup
 DB_CONFIG = {
     "host":     "127.0.0.1",
     "port":     5432,
-    "dbname":   "MyMetropolitanTheaterDatabase",   # change to your actual DB name
+    "dbname":   "MyMetropolitanTheater",   # change to your actual DB name
     "user":     "postgres",                # change to your DB user
     "password": "ortiz1004",            # change to your DB password
 }
@@ -127,6 +157,23 @@ def save_department_change(staff_id, new_dept_id):
     except Exception as e:
         messagebox.showerror("DB Error", f"Could not save changes:\n{e}")
 
+def load_performances_list():
+    """Returns list of performances for selection."""
+    try:
+        conn = get_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            SELECT p.performance_id, prod.title, p.date, p.start_time 
+            FROM Performance p 
+            JOIN Production prod ON p.production_id = prod.production_id
+            ORDER BY p.date DESC;
+        """)
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return rows # [(id, title, date, start), ...]
+    except Exception as e:
+        return []
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def rounded_rect(canvas, x1, y1, x2, y2, r, **kw):
     canvas.create_arc(x1,     y1,     x1+2*r, y1+2*r, start=90,  extent=90,  style="pieslice", **kw)
@@ -202,6 +249,55 @@ def open_logout_dialog():
     make_canvas_btn(br, "Logout", root.destroy,
                     w=90, h=36, fill=ACCENT, fill_hov=ACCENT_HOV,
                     bg=TEXT_LIGHT).pack(side="left")
+
+def open_create_work_log_dialog(staff_id, refresh_callback):
+    if not db_instance:
+        messagebox.showerror("Error", f"Database service not initialized.\n\n{backend_error}")
+        return
+
+    dlg = tk.Toplevel(root)
+    dlg.title("Create Work Log")
+    dlg.configure(bg=BG_PANEL)
+    center_on(dlg, root, 400, 300)
+    dlg.grab_set()
+
+    tk.Label(dlg, text="Select Performance", bg=BG_PANEL, fg=TEXT_DARK, 
+             font=(FONT, 12, "bold")).pack(pady=(20, 10))
+
+    perfs = load_performances_list()
+    if not perfs:
+        tk.Label(dlg, text="No performances found.", bg=BG_PANEL, fg=ACCENT).pack()
+        return
+
+    # Create display mapping
+    perf_map = {f"{r[1]} ({r[2]} @ {r[3]})": r[0] for r in perfs}
+    perf_options = list(perf_map.keys())
+
+    perf_var = tk.StringVar()
+    combo = ttk.Combobox(dlg, textvariable=perf_var, values=perf_options, state="readonly", width=40)
+    combo.pack(pady=10, padx=20)
+
+    def submit():
+        selected = perf_var.get()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select a performance.")
+            return
+        
+        perf_id = perf_map[selected]
+
+        # Call backend service
+        from backend.objects.work_log_obj import WorkLog
+        new_log = WorkLog(staff_id=staff_id, performance_id=perf_id)
+        result = db_instance.service.work_log.create_work_log(new_log)
+        
+        if "successfully" in result.lower():
+            messagebox.showinfo("Success", result)
+            dlg.destroy()
+            refresh_callback()
+        else:
+            messagebox.showerror("Error", result)
+
+    make_canvas_btn(dlg, "Confirm Log", submit, w=140, h=35).pack(pady=20)
 
 # ── Right-panel rendering ─────────────────────────────────────────────────────
 current_employee = [None]
@@ -371,7 +467,8 @@ def show_employee(emp):
     dr_combo.set("Date Range")
     dr_combo.pack(side="left", padx=(0, 8))
 
-    make_canvas_btn(btn_frame, "Add New Work Log", lambda: None,
+    make_canvas_btn(btn_frame, "Add New Work Log", 
+                    lambda: open_create_work_log_dialog(emp["staff_id"], lambda: show_employee(emp)),
                     w=140, h=30, bg=BG_PANEL).pack(side="left")
 
     tk.Frame(card3, bg=DIVIDER, height=1).pack(fill="x", padx=20)

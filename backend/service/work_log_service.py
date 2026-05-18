@@ -27,7 +27,7 @@ class WorkLogService:
                 "title": log[0],
                 "date": log_date.strftime("%m/%d/%Y"),
                 "start_time": log_start_time.strftime("%I:%M %p").lstrip("0"),
-                "start_time": log_end_time.strftime("%I:%M %p").lstrip("0"),
+                "end_time": log_end_time.strftime("%I:%M %p").lstrip("0"),
                 "hours_worked": log[4]
             })
 
@@ -36,6 +36,9 @@ class WorkLogService:
     # create new work_log for staff 
     # ONLY essential to be filled is staff_id and performance_id [hours_worked is calculated here]
     def create_work_log(self, new_log):
+        if not new_log.staff_id:
+            return "Staff ID is required."
+            
         staff = self.staff_repo.locate_staff(new_log.staff_id)
 
         if staff[2] != "Hourly":
@@ -45,13 +48,25 @@ class WorkLogService:
             return "Performance id does not exist."
 
         performance_time = self.performance.locatePerformanceByPerformanceId(new_log.performance_id)
-        start_dt = datetime.combine(date.today(), performance_time[0])
-        end_dt = datetime.combine(date.today(), performance_time[1])
+        if not performance_time:
+            return "Could not retrieve performance times."
 
-        new_log.hours_worked = int((end_dt - start_dt).total_seconds() / 3600)
+        # Ensure we are handling time objects for calculation
+        p_start = performance_time[0]
+        p_end = performance_time[1]
+
+        start_dt = datetime.combine(date.today(), p_start)
+        end_dt = datetime.combine(date.today(), p_end)
+
+        # Handle cases where performance might end after midnight
+        if end_dt <= start_dt:
+            from datetime import timedelta
+            end_dt += timedelta(days=1)
+
+        # Calculate hours as float for better accuracy, then store
+        new_log.hours_worked = round((end_dt - start_dt).total_seconds() / 3600, 2)
 
         self.work_log_repo.create_work_log(new_log)
-
         return "Added new work log successfully."
         
         

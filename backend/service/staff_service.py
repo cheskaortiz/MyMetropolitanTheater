@@ -72,9 +72,6 @@ class StaffService:
 
         sales = []
         for staff in sales_agents:
-            if staff[2] == "Entertainment" or staff[2] == "Production":
-                continue
-
             sales.append({
                 "name": staff[0],
                 "type": staff[1],

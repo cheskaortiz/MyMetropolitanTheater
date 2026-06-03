@@ -101,8 +101,7 @@ class MetropolitanApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("My Metropolitan Theater")
-        self.geometry("1200x720")
-        self.minsize(960, 580)
+        self.geometry("1920x1080")
         self.configure(bg=BG_MAIN)
         self.resizable(True, True)
 
